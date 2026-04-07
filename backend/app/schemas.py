@@ -35,6 +35,9 @@ class TransactionCreate(BaseModel):
     type: str  # 'expense' or 'income'
     category_id: Optional[int] = None
     notes: Optional[str] = None
+    is_recurring: bool = False
+    recurring_day: Optional[int] = None
+    icon: str = "receipt_long"
 
 
 class TransactionUpdate(BaseModel):
@@ -44,6 +47,9 @@ class TransactionUpdate(BaseModel):
     type: Optional[str] = None
     category_id: Optional[int] = None
     notes: Optional[str] = None
+    is_recurring: Optional[bool] = None
+    recurring_day: Optional[int] = None
+    icon: Optional[str] = None
 
 
 class TransactionOut(BaseModel):
@@ -57,6 +63,9 @@ class TransactionOut(BaseModel):
     category: Optional[CategoryOut]
     notes: Optional[str]
     bank_import_id: Optional[int]
+    is_recurring: bool = False
+    recurring_day: Optional[int] = None
+    icon: str = "receipt_long"
     created_at: DateTime
     updated_at: DateTime
 
@@ -150,6 +159,78 @@ class MonthlyTrend(BaseModel):
     net: Decimal
 
 
+# --- Salary ---
+class DiscountCreate(BaseModel):
+    name: str
+    type: str  # 'fixed' or 'percent'
+    value: Decimal
+
+
+class DiscountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    salary_config_id: int
+    name: str
+    type: str
+    value: Decimal
+    created_at: DateTime
+
+
+class OvertimeEntryCreate(BaseModel):
+    month: int
+    year: int
+    hours: Decimal
+    rate_percent: int  # 70 or 100
+
+
+class OvertimeEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    salary_config_id: int
+    month: int
+    year: int
+    hours: Decimal
+    rate_percent: int
+    created_at: DateTime
+
+
+class SalaryConfigCreate(BaseModel):
+    base_salary: Decimal
+    overtime_hour_rate: Decimal
+    meal_allowance: Decimal = Decimal("0")
+    health_plan_deduction: Decimal = Decimal("0")
+
+
+class SalaryConfigUpdate(BaseModel):
+    base_salary: Optional[Decimal] = None
+    overtime_hour_rate: Optional[Decimal] = None
+    meal_allowance: Optional[Decimal] = None
+    health_plan_deduction: Optional[Decimal] = None
+
+
+class SalaryConfigOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    base_salary: Decimal
+    overtime_hour_rate: Decimal
+    meal_allowance: Decimal = Decimal("0")
+    health_plan_deduction: Decimal = Decimal("0")
+    discounts: list[DiscountOut]
+    overtime_entries: list[OvertimeEntryOut]
+    created_at: DateTime
+    updated_at: DateTime
+
+
+class SalaryCalculationOut(BaseModel):
+    base_salary: Decimal
+    overtime_total: Decimal
+    overtime_details: list[dict]
+    gross_salary: Decimal
+    discounts_total: Decimal
+    discount_details: list[dict]
+    net_salary: Decimal
+
+
 class RecentTransactionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -160,3 +241,70 @@ class RecentTransactionOut(BaseModel):
     category_name: Optional[str]
     category_icon: Optional[str]
     icon: str  # material icon name
+
+
+# --- Income ---
+class IncomeCalculateRequest(BaseModel):
+    reference_month: int
+    reference_year: int
+    overtime_hours: Decimal = Decimal("0")
+    overtime_multiplier: Decimal = Decimal("0.30")  # 0.30, 0.50, 0.70
+    monthly_bonus: Decimal = Decimal("0")
+    discounts_absences: Decimal = Decimal("0")
+
+
+class IncomeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    reference_month: int
+    reference_year: int
+    base_salary: Decimal
+    meal_allowance: Decimal
+    health_plan_deduction: Decimal
+    overtime_hours: Decimal
+    overtime_multiplier: Decimal
+    monthly_bonus: Decimal
+    discounts_absences: Decimal
+    overtime_value: Decimal
+    inss: Decimal
+    irrf: Decimal
+    total_gross: Decimal
+    total_deductions: Decimal
+    net_salary: Decimal
+    created_at: DateTime
+
+
+class IncomeLaunchResponse(BaseModel):
+    id: int
+    reference_month: int
+    reference_year: int
+    base_salary: Decimal
+    meal_allowance: Decimal
+    health_plan_deduction: Decimal
+    overtime_hours: Decimal
+    overtime_multiplier: Decimal
+    monthly_bonus: Decimal
+    discounts_absences: Decimal
+    overtime_value: Decimal
+    inss: Decimal
+    irrf: Decimal
+    total_gross: Decimal
+    total_deductions: Decimal
+    net_salary: Decimal
+
+
+# --- Dashboard Extensions ---
+class ChartMonthOut(BaseModel):
+    month_label: str
+    total: Decimal
+
+
+class CategoryProgressOut(BaseModel):
+    name: str
+    total: Decimal
+    percentage: Decimal
+
+
+class TransactionGroupedOut(BaseModel):
+    one_time: list[TransactionOut]
+    recurring: list[TransactionOut]

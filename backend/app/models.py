@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
 
-from sqlalchemy import String, Numeric, Date, Boolean, Text, ForeignKey, Index, func
+from sqlalchemy import String, Numeric, Date, Boolean, Text, Integer, ForeignKey, Index, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -53,11 +53,56 @@ class Transaction(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     notes: Mapped[str | None] = mapped_column(Text)
     bank_import_id: Mapped[int | None] = mapped_column(ForeignKey("bank_imports.id", ondelete="SET NULL"))
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    recurring_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), default="receipt_long", server_default="receipt_long")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     category: Mapped[Category | None] = relationship(back_populates="transactions")
     bank_import: Mapped[BankImport | None] = relationship(back_populates="transactions")
+
+
+class SalaryConfig(Base):
+    __tablename__ = "salary_configs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    base_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    overtime_hour_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    meal_allowance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    health_plan_deduction: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    discounts: Mapped[list["Discount"]] = relationship(back_populates="salary_config", cascade="all, delete-orphan")
+    overtime_entries: Mapped[list["OvertimeEntry"]] = relationship(back_populates="salary_config", cascade="all, delete-orphan")
+
+
+class Discount(Base):
+    __tablename__ = "discounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    salary_config_id: Mapped[int] = mapped_column(ForeignKey("salary_configs.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100))
+    type: Mapped[str] = mapped_column(String(10))  # 'fixed' or 'percent'
+    value: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    salary_config: Mapped["SalaryConfig"] = relationship(back_populates="discounts")
+
+
+class OvertimeEntry(Base):
+    __tablename__ = "overtime_entries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    salary_config_id: Mapped[int] = mapped_column(ForeignKey("salary_configs.id", ondelete="CASCADE"))
+    month: Mapped[int] = mapped_column()  # 1-12
+    year: Mapped[int] = mapped_column()
+    hours: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    rate_percent: Mapped[int] = mapped_column()  # 70 or 100
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    salary_config: Mapped["SalaryConfig"] = relationship(back_populates="overtime_entries")
 
 
 class StagedTransaction(Base):
@@ -77,3 +122,28 @@ class StagedTransaction(Base):
 
     bank_import: Mapped[BankImport] = relationship(back_populates="staged_transactions")
     category: Mapped[Category | None] = relationship(back_populates="staged_transactions")
+
+
+class Income(Base):
+    __tablename__ = "incomes"
+    __table_args__ = (
+        UniqueConstraint("reference_month", "reference_year", name="uq_income_month_year"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference_month: Mapped[int] = mapped_column(Integer)  # 1-12
+    reference_year: Mapped[int] = mapped_column(Integer)
+    base_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    meal_allowance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    health_plan_deduction: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    overtime_hours: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=0)
+    overtime_multiplier: Mapped[Decimal] = mapped_column(Numeric(4, 2), default=Decimal("0.30"))
+    monthly_bonus: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    discounts_absences: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    overtime_value: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    inss: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    irrf: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    total_gross: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    total_deductions: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    net_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

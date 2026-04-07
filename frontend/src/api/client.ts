@@ -12,6 +12,15 @@ import type {
   SpendingByCategory,
   MonthlyTrend,
   RecentTransaction,
+  SalaryConfig,
+  SalaryCalculation,
+  DiscountData,
+  OvertimeEntryData,
+  Income,
+  IncomeCalculateRequest,
+  ChartMonth,
+  CategoryProgress,
+  TransactionsGrouped,
 } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
@@ -91,3 +100,51 @@ export const getSpendingByCategory = (params?: { start_date?: string; end_date?:
 
 export const getMonthlyTrends = (months?: number) =>
   api.get<MonthlyTrend[]>('/dashboard/monthly-trends', { params: { months } }).then((r) => r.data)
+
+// Salary
+export const getSalaryConfig = () =>
+  api.get<SalaryConfig | null>('/salary/config').then((r) => r.data)
+
+export const saveSalaryConfig = (data: { base_salary: number; overtime_hour_rate: number; meal_allowance?: number; health_plan_deduction?: number }) =>
+  api.post<SalaryConfig>('/salary/config', data).then((r) => r.data)
+
+export const updateSalaryConfig = (data: { base_salary?: number; overtime_hour_rate?: number; meal_allowance?: number; health_plan_deduction?: number }) =>
+  api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
+
+export const addDiscount = (data: { name: string; type: string; value: number }) =>
+  api.post<DiscountData>('/salary/discounts', data).then((r) => r.data)
+
+export const removeDiscount = (id: number) =>
+  api.delete(`/salary/discounts/${id}`)
+
+export const addOvertime = (data: { month: number; year: number; hours: number; rate_percent: number }) =>
+  api.post<OvertimeEntryData>('/salary/overtime', data).then((r) => r.data)
+
+export const removeOvertime = (id: number) =>
+  api.delete(`/salary/overtime/${id}`)
+
+export const calculateSalary = (params: { month: number; year: number }) =>
+  api.get<SalaryCalculation>('/salary/calculate', { params }).then((r) => r.data)
+
+// Incomes
+export const calculateIncome = (data: IncomeCalculateRequest) =>
+  api.post<Income>('/incomes/calculate', data).then((r) => r.data)
+
+export const launchIncome = (data: IncomeCalculateRequest) =>
+  api.post<Income>('/incomes/launch', data).then((r) => r.data)
+
+export const getIncomes = () =>
+  api.get<Income[]>('/incomes/').then((r) => r.data)
+
+export const deleteIncome = (id: number) =>
+  api.delete(`/incomes/${id}`)
+
+// Dashboard - New endpoints
+export const getChart6Months = () =>
+  api.get<ChartMonth[]>('/dashboard/chart-6months').then((r) => r.data)
+
+export const getCategoryProgress = (params?: { year?: number; month?: number }) =>
+  api.get<CategoryProgress[]>('/dashboard/category-progress', { params }).then((r) => r.data)
+
+export const getTransactionsGrouped = (params?: { year?: number; month?: number }) =>
+  api.get<TransactionsGrouped>('/dashboard/transactions-grouped', { params }).then((r) => r.data)

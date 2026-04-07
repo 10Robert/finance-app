@@ -18,6 +18,10 @@ from app.schemas import (
     SpendingByCategory,
     MonthlyTrend,
     RecentTransactionOut,
+    ChartMonthOut,
+    CategoryProgressOut,
+    TransactionGroupedOut,
+    TransactionOut,
 )
 
 router = APIRouter()
@@ -358,3 +362,101 @@ async def monthly_trends(
         MonthlyTrend(month=r.month, income=r.income, expenses=r.expenses, net=r.income - r.expenses)
         for r in reversed(rows)
     ]
+
+
+# --- New Dashboard Endpoints ---
+
+MONTH_LABELS_PT = {
+    1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+    7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez",
+}
+
+
+@router.get("/chart-6months", response_model=list[ChartMonthOut])
+async def chart_6_months(db: AsyncSession = Depends(get_db)):
+    today = date.today()
+    results = []
+
+    for i in range(5, -1, -1):
+        m = today.month - i
+        y = today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+
+        start, end = _get_month_range(y, m)
+        q = select(
+            func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
+        ).where(
+            Transaction.type == "expense",
+            Transaction.date >= start,
+            Transaction.date <= end,
+        )
+        row = (await db.execute(q)).one()
+        results.append(ChartMonthOut(
+            month_label=MONTH_LABELS_PT[m],
+            total=row.total,
+        ))
+
+    return results
+
+
+@router.get("/category-progress", response_model=list[CategoryProgressOut])
+async def category_progress(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+    start, end = _get_month_range(y, m)
+
+    q = (
+        select(
+            Category.name.label("name"),
+            func.sum(func.abs(Transaction.amount)).label("total"),
+        )
+        .join(Category, Transaction.category_id == Category.id)
+        .where(Transaction.type == "expense", Transaction.date >= start, Transaction.date <= end)
+        .group_by(Category.name)
+        .order_by(func.sum(func.abs(Transaction.amount)).desc())
+    )
+    result = await db.execute(q)
+    rows = result.all()
+
+    grand_total = sum(r.total for r in rows) if rows else Decimal("1")
+    return [
+        CategoryProgressOut(
+            name=r.name,
+            total=r.total,
+            percentage=(r.total / grand_total * 100).quantize(Decimal("0.1")),
+        )
+        for r in rows
+    ]
+
+
+@router.get("/transactions-grouped", response_model=TransactionGroupedOut)
+async def transactions_grouped(
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    today = date.today()
+    y = year or today.year
+    m = month or today.month
+    start, end = _get_month_range(y, m)
+
+    q = (
+        select(Transaction)
+        .options(selectinload(Transaction.category))
+        .where(Transaction.type == "expense", Transaction.date >= start, Transaction.date <= end)
+        .order_by(Transaction.date.desc())
+    )
+    result = await db.execute(q)
+    txns = result.scalars().all()
+
+    one_time = [t for t in txns if not t.is_recurring]
+    recurring = [t for t in txns if t.is_recurring]
+
+    return TransactionGroupedOut(one_time=one_time, recurring=recurring)
