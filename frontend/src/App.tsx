@@ -4,6 +4,7 @@ import TransactionsPage from './pages/TransactionsPage'
 import ImportPage from './pages/ImportPage'
 import SalaryPage from './pages/SalaryPage'
 import ExpensesPage from './pages/ExpensesPage'
+import SettingsPage from './pages/SettingsPage'
 
 const navItems = [
   { to: '/', label: 'Painel', icon: 'dashboard' },
@@ -12,6 +13,7 @@ const navItems = [
   { to: '/import', label: 'Orçamentos', icon: 'account_balance_wallet' },
   { to: '/reports', label: 'Relatórios', icon: 'analytics' },
   { to: '/salary', label: 'Rendimentos', icon: 'trending_up' },
+  { to: '/settings', label: 'Configurações', icon: 'settings' },
 ]
 
 const BREADCRUMBS: Record<string, string> = {
@@ -21,6 +23,7 @@ const BREADCRUMBS: Record<string, string> = {
   '/import': 'Importar',
   '/reports': 'Relatórios',
   '/salary': 'Rendimentos Mensais',
+  '/settings': 'Configurações',
 }
 
 export default function App() {
@@ -101,6 +104,7 @@ export default function App() {
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/import" element={<ImportPage />} />
             <Route path="/salary" element={<SalaryPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
       </div>
