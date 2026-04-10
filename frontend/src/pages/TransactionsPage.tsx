@@ -32,11 +32,22 @@ export default function TransactionsPage() {
       }),
   })
 
+  const extractError = (err: unknown): string => {
+    const e = err as { response?: { data?: { detail?: unknown } }; message?: string }
+    const detail = e?.response?.data?.detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d?.msg ?? '').join('; ')
+    return e?.message ?? 'Erro desconhecido ao salvar transação'
+  }
+
   const createMut = useMutation({
     mutationFn: createTransaction,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       setShowForm(false)
+    },
+    onError: (err) => {
+      alert(`Erro ao criar transação: ${extractError(err)}`)
     },
   })
 
@@ -47,6 +58,9 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       setEditingId(null)
       setShowForm(false)
+    },
+    onError: (err) => {
+      alert(`Erro ao atualizar transação: ${extractError(err)}`)
     },
   })
 

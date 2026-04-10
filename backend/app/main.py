@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.database import engine, Base
 from app.routers import transactions, categories, imports, dashboard, salary, incomes
@@ -11,6 +12,20 @@ from app.routers import transactions, categories, imports, dashboard, salary, in
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Idempotent column migrations: bring legacy databases (created before
+        # v1.1/v1.2) up to the current model schema. create_all() only creates
+        # missing tables, never adds new columns to existing tables.
+        await conn.execute(text("""
+            ALTER TABLE transactions
+                ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS recurring_day INTEGER,
+                ADD COLUMN IF NOT EXISTS icon VARCHAR(50) NOT NULL DEFAULT 'receipt_long'
+        """))
+        await conn.execute(text("""
+            ALTER TABLE salary_configs
+                ADD COLUMN IF NOT EXISTS meal_allowance NUMERIC(12,2) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS health_plan_deduction NUMERIC(12,2) NOT NULL DEFAULT 0
+        """))
     yield
 
 

@@ -88,6 +88,15 @@ export default function SalaryPage() {
     },
   })
 
+  const launchErrorMessage = (() => {
+    if (!launchMut.isError) return null
+    const e = launchMut.error as { response?: { data?: { detail?: unknown } }; message?: string }
+    const detail = e?.response?.data?.detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d?.msg ?? '').join('; ')
+    return e?.message ?? 'Erro desconhecido ao lançar rendimento'
+  })()
+
   // Real-time calculation preview
   const calc = useMemo(() => {
     const baseSalary = config ? Number(config.base_salary) : 0
@@ -239,7 +248,7 @@ export default function SalaryPage() {
             </div>
 
             {/* Submit Button */}
-            <div className="pt-6">
+            <div className="pt-6 space-y-3">
               <button
                 onClick={() => launchMut.mutate()}
                 disabled={!config || launchMut.isPending}
@@ -248,6 +257,17 @@ export default function SalaryPage() {
                 <span className="material-symbols-outlined">save</span>
                 {launchMut.isPending ? 'Processando...' : 'Calcular e Lançar'}
               </button>
+              {!config && (
+                <p className="text-xs text-on-surface-variant text-center">
+                  Configure seu salário base em "Configurações Fixas" para habilitar o lançamento.
+                </p>
+              )}
+              {launchErrorMessage && (
+                <div className="bg-error/10 border border-error/40 rounded-lg p-3 text-sm text-error flex items-start gap-2">
+                  <span className="material-symbols-outlined text-base">error</span>
+                  <span className="break-words">{launchErrorMessage}</span>
+                </div>
+              )}
             </div>
           </div>
 
