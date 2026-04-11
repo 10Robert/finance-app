@@ -199,6 +199,10 @@ class SalaryConfigCreate(BaseModel):
     overtime_hour_rate: Decimal
     meal_allowance: Decimal = Decimal("0")
     health_plan_deduction: Decimal = Decimal("0")
+    dental_plan_deduction: Decimal = Decimal("0")
+    transport_voucher_enabled: bool = False
+    transport_voucher_percent: Decimal = Decimal("6.00")
+    fgts_balance: Decimal = Decimal("0")
 
 
 class SalaryConfigUpdate(BaseModel):
@@ -206,6 +210,10 @@ class SalaryConfigUpdate(BaseModel):
     overtime_hour_rate: Optional[Decimal] = None
     meal_allowance: Optional[Decimal] = None
     health_plan_deduction: Optional[Decimal] = None
+    dental_plan_deduction: Optional[Decimal] = None
+    transport_voucher_enabled: Optional[bool] = None
+    transport_voucher_percent: Optional[Decimal] = None
+    fgts_balance: Optional[Decimal] = None
 
 
 class SalaryConfigOut(BaseModel):
@@ -215,6 +223,10 @@ class SalaryConfigOut(BaseModel):
     overtime_hour_rate: Decimal
     meal_allowance: Decimal = Decimal("0")
     health_plan_deduction: Decimal = Decimal("0")
+    dental_plan_deduction: Decimal = Decimal("0")
+    transport_voucher_enabled: bool = False
+    transport_voucher_percent: Decimal = Decimal("6.00")
+    fgts_balance: Decimal = Decimal("0")
     discounts: list[DiscountOut]
     overtime_entries: list[OvertimeEntryOut]
     created_at: DateTime
@@ -308,3 +320,64 @@ class CategoryProgressOut(BaseModel):
 class TransactionGroupedOut(BaseModel):
     one_time: list[TransactionOut]
     recurring: list[TransactionOut]
+
+
+# --- Monthly Entries (overtime / refund / late / absence launches) ---
+class MonthlyEntryCreate(BaseModel):
+    reference_month: int
+    reference_year: int
+    entry_type: str  # 'overtime' | 'refund' | 'late' | 'absence'
+    entry_date: Optional[Date] = None  # defaults to today server-side
+    description: Optional[str] = None
+    amount: Optional[Decimal] = None
+    hours: Optional[Decimal] = None
+    overtime_multiplier: Optional[Decimal] = None
+    days: Optional[int] = None
+
+
+class MonthlyEntryUpdate(BaseModel):
+    entry_date: Optional[Date] = None
+    description: Optional[str] = None
+    amount: Optional[Decimal] = None
+    hours: Optional[Decimal] = None
+    overtime_multiplier: Optional[Decimal] = None
+    days: Optional[int] = None
+
+
+class MonthlyEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    reference_month: int
+    reference_year: int
+    entry_type: str
+    entry_date: Date
+    description: Optional[str]
+    amount: Optional[Decimal]
+    hours: Optional[Decimal]
+    overtime_multiplier: Optional[Decimal]
+    days: Optional[int]
+    created_at: DateTime
+
+
+class MonthlySummaryOut(BaseModel):
+    reference_month: int
+    reference_year: int
+    base_salary: Decimal
+    meal_allowance: Decimal
+    overtime_hours_total: Decimal
+    overtime_value: Decimal
+    refunds_total: Decimal
+    late_hours_total: Decimal
+    late_value: Decimal
+    absence_days_total: int
+    absence_value: Decimal
+    discounts_absences_value: Decimal
+    health_plan_deduction: Decimal
+    dental_plan_deduction: Decimal
+    transport_voucher_value: Decimal
+    inss: Decimal
+    irrf: Decimal
+    total_gross: Decimal
+    total_deductions: Decimal
+    net_salary: Decimal
+    fgts_balance: Decimal

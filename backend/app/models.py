@@ -71,11 +71,35 @@ class SalaryConfig(Base):
     overtime_hour_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     meal_allowance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
     health_plan_deduction: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    dental_plan_deduction: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    transport_voucher_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    transport_voucher_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("6.00"), server_default="6.00")
+    fgts_balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     discounts: Mapped[list["Discount"]] = relationship(back_populates="salary_config", cascade="all, delete-orphan")
     overtime_entries: Mapped[list["OvertimeEntry"]] = relationship(back_populates="salary_config", cascade="all, delete-orphan")
+
+
+class MonthlyEntry(Base):
+    """A single launch within a reference month: overtime, refund, late-hours or absence."""
+    __tablename__ = "monthly_entries"
+    __table_args__ = (
+        Index("idx_monthly_entries_period", "reference_year", "reference_month"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference_month: Mapped[int] = mapped_column(Integer)  # 1-12
+    reference_year: Mapped[int] = mapped_column(Integer)
+    entry_type: Mapped[str] = mapped_column(String(20))  # 'overtime' | 'refund' | 'late' | 'absence'
+    entry_date: Mapped[date] = mapped_column(Date)
+    description: Mapped[str | None] = mapped_column(Text)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # refunds: BRL value
+    hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))  # overtime/late: hours
+    overtime_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))  # overtime: 0.30/0.70/1.00
+    days: Mapped[int | None] = mapped_column(Integer)  # absence: missed days
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class Discount(Base):

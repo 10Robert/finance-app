@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine, Base
-from app.routers import transactions, categories, imports, dashboard, salary, incomes
+from app.routers import transactions, categories, imports, dashboard, salary, incomes, monthly_entries
 
 
 @asynccontextmanager
@@ -24,7 +24,11 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("""
             ALTER TABLE salary_configs
                 ADD COLUMN IF NOT EXISTS meal_allowance NUMERIC(12,2) NOT NULL DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS health_plan_deduction NUMERIC(12,2) NOT NULL DEFAULT 0
+                ADD COLUMN IF NOT EXISTS health_plan_deduction NUMERIC(12,2) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS dental_plan_deduction NUMERIC(12,2) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS transport_voucher_enabled BOOLEAN NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS transport_voucher_percent NUMERIC(5,2) NOT NULL DEFAULT 6.00,
+                ADD COLUMN IF NOT EXISTS fgts_balance NUMERIC(12,2) NOT NULL DEFAULT 0
         """))
     yield
 
@@ -45,6 +49,7 @@ app.include_router(imports.router, prefix="/api/imports", tags=["imports"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(salary.router, prefix="/api/salary", tags=["salary"])
 app.include_router(incomes.router, prefix="/api/incomes", tags=["incomes"])
+app.include_router(monthly_entries.router, prefix="/api/monthly-entries", tags=["monthly-entries"])
 
 
 @app.get("/api/health")

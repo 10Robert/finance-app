@@ -18,6 +18,10 @@ import type {
   OvertimeEntryData,
   Income,
   IncomeCalculateRequest,
+  MonthlyEntry,
+  MonthlyEntryCreate,
+  MonthlyEntryUpdate,
+  MonthlySummary,
   ChartMonth,
   CategoryProgress,
   TransactionsGrouped,
@@ -105,11 +109,27 @@ export const getMonthlyTrends = (months?: number) =>
 export const getSalaryConfig = () =>
   api.get<SalaryConfig | null>('/salary/config').then((r) => r.data)
 
-export const saveSalaryConfig = (data: { base_salary: number; overtime_hour_rate: number; meal_allowance?: number; health_plan_deduction?: number }) =>
-  api.post<SalaryConfig>('/salary/config', data).then((r) => r.data)
+export const saveSalaryConfig = (data: {
+  base_salary: number
+  overtime_hour_rate: number
+  meal_allowance?: number
+  health_plan_deduction?: number
+  dental_plan_deduction?: number
+  transport_voucher_enabled?: boolean
+  transport_voucher_percent?: number
+  fgts_balance?: number
+}) => api.post<SalaryConfig>('/salary/config', data).then((r) => r.data)
 
-export const updateSalaryConfig = (data: { base_salary?: number; overtime_hour_rate?: number; meal_allowance?: number; health_plan_deduction?: number }) =>
-  api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
+export const updateSalaryConfig = (data: {
+  base_salary?: number
+  overtime_hour_rate?: number
+  meal_allowance?: number
+  health_plan_deduction?: number
+  dental_plan_deduction?: number
+  transport_voucher_enabled?: boolean
+  transport_voucher_percent?: number
+  fgts_balance?: number
+}) => api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
 
 export const addDiscount = (data: { name: string; type: string; value: number }) =>
   api.post<DiscountData>('/salary/discounts', data).then((r) => r.data)
@@ -138,6 +158,22 @@ export const getIncomes = () =>
 
 export const deleteIncome = (id: number) =>
   api.delete(`/incomes/${id}`)
+
+// Monthly Entries (overtime / refund / late / absence)
+export const getMonthlyEntries = (params: { month: number; year: number }) =>
+  api.get<MonthlyEntry[]>('/monthly-entries/', { params }).then((r) => r.data)
+
+export const createMonthlyEntry = (data: MonthlyEntryCreate) =>
+  api.post<MonthlyEntry>('/monthly-entries/', data).then((r) => r.data)
+
+export const updateMonthlyEntry = (id: number, data: MonthlyEntryUpdate) =>
+  api.put<MonthlyEntry>(`/monthly-entries/${id}`, data).then((r) => r.data)
+
+export const deleteMonthlyEntry = (id: number) =>
+  api.delete(`/monthly-entries/${id}`)
+
+export const getMonthlySummary = (params: { month: number; year: number }) =>
+  api.get<MonthlySummary>('/monthly-entries/summary', { params }).then((r) => r.data)
 
 // Dashboard - New endpoints
 export const getChart6Months = () =>

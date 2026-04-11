@@ -62,12 +62,20 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
         config.overtime_hour_rate = data.overtime_hour_rate
         config.meal_allowance = data.meal_allowance
         config.health_plan_deduction = data.health_plan_deduction
+        config.dental_plan_deduction = data.dental_plan_deduction
+        config.transport_voucher_enabled = data.transport_voucher_enabled
+        config.transport_voucher_percent = data.transport_voucher_percent
+        config.fgts_balance = data.fgts_balance
     else:
         config = SalaryConfig(
             base_salary=data.base_salary,
             overtime_hour_rate=data.overtime_hour_rate,
             meal_allowance=data.meal_allowance,
             health_plan_deduction=data.health_plan_deduction,
+            dental_plan_deduction=data.dental_plan_deduction,
+            transport_voucher_enabled=data.transport_voucher_enabled,
+            transport_voucher_percent=data.transport_voucher_percent,
+            fgts_balance=data.fgts_balance,
         )
         db.add(config)
     await db.commit()
@@ -92,6 +100,14 @@ async def update_salary_config(data: SalaryConfigUpdate, db: AsyncSession = Depe
         config.meal_allowance = data.meal_allowance
     if data.health_plan_deduction is not None:
         config.health_plan_deduction = data.health_plan_deduction
+    if data.dental_plan_deduction is not None:
+        config.dental_plan_deduction = data.dental_plan_deduction
+    if data.transport_voucher_enabled is not None:
+        config.transport_voucher_enabled = data.transport_voucher_enabled
+    if data.transport_voucher_percent is not None:
+        config.transport_voucher_percent = data.transport_voucher_percent
+    if data.fgts_balance is not None:
+        config.fgts_balance = data.fgts_balance
     await db.commit()
     await db.refresh(config)
     result = await db.execute(

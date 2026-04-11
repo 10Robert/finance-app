@@ -130,6 +130,10 @@ export interface SalaryConfig {
   overtime_hour_rate: number
   meal_allowance: number
   health_plan_deduction: number
+  dental_plan_deduction: number
+  transport_voucher_enabled: boolean
+  transport_voucher_percent: number
+  fgts_balance: number
   discounts: DiscountData[]
   overtime_entries: OvertimeEntryData[]
   created_at: string
@@ -202,4 +206,66 @@ export interface CategoryProgress {
 export interface TransactionsGrouped {
   one_time: Transaction[]
   recurring: Transaction[]
+}
+
+// Monthly Entries (overtime / refund / late / absence launches)
+export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence'
+
+export interface MonthlyEntry {
+  id: number
+  reference_month: number
+  reference_year: number
+  entry_type: MonthlyEntryType
+  entry_date: string
+  description: string | null
+  amount: number | null
+  hours: number | null
+  overtime_multiplier: number | null
+  days: number | null
+  created_at: string
+}
+
+export interface MonthlyEntryCreate {
+  reference_month: number
+  reference_year: number
+  entry_type: MonthlyEntryType
+  entry_date?: string | null
+  description?: string | null
+  amount?: number | null
+  hours?: number | null
+  overtime_multiplier?: number | null
+  days?: number | null
+}
+
+export interface MonthlyEntryUpdate {
+  entry_date?: string | null
+  description?: string | null
+  amount?: number | null
+  hours?: number | null
+  overtime_multiplier?: number | null
+  days?: number | null
+}
+
+export interface MonthlySummary {
+  reference_month: number
+  reference_year: number
+  base_salary: number
+  meal_allowance: number
+  overtime_hours_total: number
+  overtime_value: number
+  refunds_total: number
+  late_hours_total: number
+  late_value: number
+  absence_days_total: number
+  absence_value: number
+  discounts_absences_value: number
+  health_plan_deduction: number
+  dental_plan_deduction: number
+  transport_voucher_value: number
+  inss: number
+  irrf: number
+  total_gross: number
+  total_deductions: number
+  net_salary: number
+  fgts_balance: number
 }
