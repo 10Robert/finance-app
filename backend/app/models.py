@@ -56,6 +56,7 @@ class Transaction(Base):
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     recurring_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
     icon: Mapped[str] = mapped_column(String(50), default="receipt_long", server_default="receipt_long")
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

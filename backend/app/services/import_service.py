@@ -84,8 +84,12 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
         raise
 
 
-async def confirm_import(bank_import_id: int, db: AsyncSession) -> int:
-    """Move accepted staged transactions into the transactions table."""
+async def confirm_import(bank_import_id: int, db: AsyncSession) -> dict:
+    """Move accepted staged transactions into the transactions table.
+
+    Income entries (salaries, refunds) are skipped intentionally — those are
+    managed exclusively from the Rendimentos screen, not from bank statements.
+    """
     result = await db.execute(
         select(StagedTransaction).where(
             StagedTransaction.bank_import_id == bank_import_id,
@@ -94,7 +98,12 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> int:
     )
     staged_rows = result.scalars().all()
 
+    created = 0
+    skipped_income = 0
     for staged in staged_rows:
+        if staged.type == "income":
+            skipped_income += 1
+            continue
         transaction = Transaction(
             date=staged.date,
             description=staged.description,
@@ -104,11 +113,12 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> int:
             bank_import_id=bank_import_id,
         )
         db.add(transaction)
+        created += 1
 
     bank_import = await db.get(BankImport, bank_import_id)
     bank_import.status = "completed"
     await db.commit()
-    return len(staged_rows)
+    return {"created": created, "skipped_income": skipped_income}
 
 
 def _parse_date(value: str) -> date:

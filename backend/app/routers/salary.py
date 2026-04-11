@@ -1,3 +1,4 @@
+from datetime import date as DateCls
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +18,7 @@ from app.schemas import (
     OvertimeEntryOut,
     SalaryCalculationOut,
 )
+from app.services.salary_sync import sync_salary_transaction
 
 router = APIRouter()
 
@@ -86,7 +88,10 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
         .where(SalaryConfig.id == config.id)
     )
-    return result.scalar_one()
+    out = result.scalar_one()
+    today = DateCls.today()
+    await sync_salary_transaction(db, today.month, today.year)
+    return out
 
 
 @router.put("/config", response_model=SalaryConfigOut)
@@ -115,7 +120,10 @@ async def update_salary_config(data: SalaryConfigUpdate, db: AsyncSession = Depe
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
         .where(SalaryConfig.id == config.id)
     )
-    return result.scalar_one()
+    out = result.scalar_one()
+    today = DateCls.today()
+    await sync_salary_transaction(db, today.month, today.year)
+    return out
 
 
 # --- Discounts ---

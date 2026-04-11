@@ -80,7 +80,11 @@ export const updateStagedTransactions = (
 ) => api.put(`/imports/${id}/staged`, { updates })
 
 export const confirmImport = (id: number) =>
-  api.post<{ count: number }>(`/imports/${id}/confirm`).then((r) => r.data)
+  api
+    .post<{ message: string; created: number; skipped_income: number }>(
+      `/imports/${id}/confirm`
+    )
+    .then((r) => r.data)
 
 // Dashboard - New endpoints
 export const getBalance = (params: { year: number; month?: number }) =>

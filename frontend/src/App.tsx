@@ -1,7 +1,6 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import DashboardPage from './pages/DashboardPage'
 import TransactionsPage from './pages/TransactionsPage'
-import ImportPage from './pages/ImportPage'
 import SalaryPage from './pages/SalaryPage'
 import ExpensesPage from './pages/ExpensesPage'
 import SettingsPage from './pages/SettingsPage'
@@ -10,7 +9,6 @@ const navItems = [
   { to: '/', label: 'Painel', icon: 'dashboard' },
   { to: '/expenses', label: 'Gastos', icon: 'shopping_cart' },
   { to: '/transactions', label: 'Transações', icon: 'receipt_long' },
-  { to: '/import', label: 'Orçamentos', icon: 'account_balance_wallet' },
   { to: '/reports', label: 'Relatórios', icon: 'analytics' },
   { to: '/salary', label: 'Rendimentos', icon: 'trending_up' },
   { to: '/settings', label: 'Configurações', icon: 'settings' },
@@ -20,7 +18,6 @@ const BREADCRUMBS: Record<string, string> = {
   '/': 'Painel',
   '/expenses': 'Gastos',
   '/transactions': 'Transações',
-  '/import': 'Importar',
   '/reports': 'Relatórios',
   '/salary': 'Rendimentos Mensais',
   '/settings': 'Configurações',
@@ -102,7 +99,6 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/import" element={<ImportPage />} />
             <Route path="/salary" element={<SalaryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

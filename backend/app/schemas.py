@@ -66,6 +66,7 @@ class TransactionOut(BaseModel):
     is_recurring: bool = False
     recurring_day: Optional[int] = None
     icon: str = "receipt_long"
+    source: Optional[str] = None
     created_at: DateTime
     updated_at: DateTime
 

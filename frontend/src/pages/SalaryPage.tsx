@@ -8,6 +8,8 @@ import {
   createMonthlyEntry,
   updateMonthlyEntry,
   deleteMonthlyEntry,
+  getBalance,
+  getTransactions,
 } from '../api/client'
 import type { MonthlyEntry, MonthlyEntryType } from '../types'
 
@@ -93,6 +95,40 @@ export default function SalaryPage() {
     queryFn: () => getMonthlySummary({ month: selectedMonth, year: selectedYear }),
     enabled: !!config,
   })
+
+  // Saldo total acumulado (independente do mês selecionado)
+  const { data: balance } = useQuery({
+    queryKey: ['balance', selectedYear, selectedMonth],
+    queryFn: () => getBalance({ year: selectedYear, month: selectedMonth }),
+  })
+
+  // Despesas do mês selecionado
+  const monthRange = useMemo(() => {
+    const start = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`
+    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+    const end = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+    return { start, end }
+  }, [selectedMonth, selectedYear])
+
+  const { data: monthExpenses } = useQuery({
+    queryKey: ['month-expenses', selectedMonth, selectedYear],
+    queryFn: () =>
+      getTransactions({
+        type: 'expense',
+        start_date: monthRange.start,
+        end_date: monthRange.end,
+        per_page: 1000,
+      }),
+  })
+
+  const expenseTotal = useMemo(
+    () => (monthExpenses?.items || []).reduce((s, t) => s + Number(t.amount || 0), 0),
+    [monthExpenses],
+  )
+
+  const netSalary = Number(summary?.net_salary ?? 0)
+  const monthlyResult = netSalary - expenseTotal
+  const fgtsMonthlyDeposit = Number(config?.base_salary ?? 0) * 0.08
 
   const openConfigModal = () => {
     if (config) {
@@ -290,6 +326,48 @@ export default function SalaryPage() {
           </button>
         </div>
       </header>
+
+      {/* Summary cards */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-[#a1a1aa] text-base">account_balance_wallet</span>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
+          </div>
+          <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
+          <p className="text-xs text-[#52525b] mt-1">Acumulado até o mês</p>
+        </div>
+        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-[#a78bfa] text-base">payments</span>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Salário Líquido</p>
+          </div>
+          <p className="text-2xl font-black text-[#a78bfa]">{fmt(netSalary)}</p>
+          <p className="text-xs text-[#52525b] mt-1">{MONTHS[selectedMonth - 1]}/{selectedYear}</p>
+        </div>
+        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="material-symbols-outlined text-[#ef4444] text-base">trending_down</span>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesa Mensal</p>
+          </div>
+          <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseTotal)}</p>
+          <p className="text-xs text-[#52525b] mt-1">{monthExpenses?.items.length ?? 0} lançamentos</p>
+        </div>
+        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className={`material-symbols-outlined text-base ${monthlyResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}
+            >
+              {monthlyResult >= 0 ? 'trending_up' : 'trending_down'}
+            </span>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado Mensal</p>
+          </div>
+          <p className={`text-2xl font-black ${monthlyResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
+            {fmt(monthlyResult)}
+          </p>
+          <p className="text-xs text-[#52525b] mt-1">Líquido − Despesas</p>
+        </div>
+      </section>
 
       {/* Main Grid */}
       <div className="grid grid-cols-12 gap-8">
@@ -507,14 +585,24 @@ export default function SalaryPage() {
                   </div>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 space-y-2">
                   <div className="flex items-center gap-3 bg-[#0c0c0f] rounded-lg p-3 border border-[#27272a]">
                     <span className="material-symbols-outlined text-[#34d399]">savings</span>
                     <div className="flex-1">
-                      <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo FGTS</p>
+                      <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo FGTS atual</p>
                       <p className="text-sm font-bold text-[#fafafa]">{fmt(Number(summary.fgts_balance))}</p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-3 bg-[#0c0c0f] rounded-lg p-3 border border-[#27272a]">
+                    <span className="material-symbols-outlined text-[#34d399]">add_circle</span>
+                    <div className="flex-1">
+                      <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Depósito mensal estimado</p>
+                      <p className="text-sm font-bold text-[#fafafa]">{fmt(fgtsMonthlyDeposit)}</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-[#52525b] text-center italic">
+                    informativo — não conta como receita
+                  </p>
                 </div>
               </>
             )}

@@ -19,7 +19,8 @@ async def lifespan(app: FastAPI):
             ALTER TABLE transactions
                 ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT false,
                 ADD COLUMN IF NOT EXISTS recurring_day INTEGER,
-                ADD COLUMN IF NOT EXISTS icon VARCHAR(50) NOT NULL DEFAULT 'receipt_long'
+                ADD COLUMN IF NOT EXISTS icon VARCHAR(50) NOT NULL DEFAULT 'receipt_long',
+                ADD COLUMN IF NOT EXISTS source VARCHAR(32)
         """))
         await conn.execute(text("""
             ALTER TABLE salary_configs

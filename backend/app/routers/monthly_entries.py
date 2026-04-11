@@ -1,5 +1,4 @@
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -14,13 +13,9 @@ from app.schemas import (
     MonthlyEntryOut,
     MonthlySummaryOut,
 )
-from app.services.salary_calculator import calculate_inss, calculate_irrf
+from app.services.salary_sync import compute_monthly_summary, sync_salary_transaction
 
 router = APIRouter()
-
-TWO_PLACES = Decimal("0.01")
-HOURS_PER_MONTH = Decimal("220")
-DAYS_PER_MONTH = Decimal("30")
 
 
 async def _get_salary_config(db: AsyncSession) -> SalaryConfig | None:
@@ -85,6 +80,7 @@ async def create_entry(data: MonthlyEntryCreate, db: AsyncSession = Depends(get_
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
+    await sync_salary_transaction(db, entry.reference_month, entry.reference_year)
     return entry
 
 
@@ -97,6 +93,7 @@ async def update_entry(entry_id: int, data: MonthlyEntryUpdate, db: AsyncSession
         setattr(entry, key, value)
     await db.commit()
     await db.refresh(entry)
+    await sync_salary_transaction(db, entry.reference_month, entry.reference_year)
     return entry
 
 
@@ -105,8 +102,10 @@ async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
     entry = await db.get(MonthlyEntry, entry_id)
     if not entry:
         raise HTTPException(404, "Lançamento não encontrado")
+    month, year = entry.reference_month, entry.reference_year
     await db.delete(entry)
     await db.commit()
+    await sync_salary_transaction(db, month, year)
 
 
 @router.get("/summary", response_model=MonthlySummaryOut)
@@ -119,13 +118,6 @@ async def month_summary(
     if not config:
         raise HTTPException(404, "Salary config não encontrada. Configure seu salário primeiro.")
 
-    base_salary = config.base_salary
-    meal_allowance = config.meal_allowance
-    health = config.health_plan_deduction
-    dental = config.dental_plan_deduction
-    fgts = config.fgts_balance
-
-    # Aggregate entries for the period
     result = await db.execute(
         select(MonthlyEntry).where(
             MonthlyEntry.reference_month == month,
@@ -133,76 +125,4 @@ async def month_summary(
         )
     )
     entries = result.scalars().all()
-
-    hourly_rate = base_salary / HOURS_PER_MONTH
-    daily_rate = base_salary / DAYS_PER_MONTH
-
-    overtime_hours_total = Decimal("0")
-    overtime_value = Decimal("0")
-    refunds_total = Decimal("0")
-    late_hours_total = Decimal("0")
-    late_value = Decimal("0")
-    absence_days_total = 0
-    absence_value = Decimal("0")
-
-    for e in entries:
-        if e.entry_type == "overtime" and e.hours:
-            mult = e.overtime_multiplier or Decimal("0")
-            overtime_hours_total += e.hours
-            overtime_value += e.hours * hourly_rate * (Decimal("1") + mult)
-        elif e.entry_type == "refund" and e.amount:
-            refunds_total += e.amount
-        elif e.entry_type == "late" and e.hours:
-            late_hours_total += e.hours
-            late_value += e.hours * hourly_rate
-        elif e.entry_type == "absence" and e.days:
-            absence_days_total += e.days
-            absence_value += Decimal(e.days) * daily_rate
-
-    overtime_value = overtime_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-    late_value = late_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-    absence_value = absence_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-    discounts_absences_value = (late_value + absence_value).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-
-    # INSS / IRRF base: salary + overtime (meal allowance excluded by Brazilian law)
-    inss_base = base_salary + overtime_value
-    inss = calculate_inss(inss_base)
-    irrf = calculate_irrf(inss_base - inss)
-
-    transport_voucher_value = Decimal("0")
-    if config.transport_voucher_enabled:
-        transport_voucher_value = (base_salary * config.transport_voucher_percent / Decimal("100")).quantize(
-            TWO_PLACES, rounding=ROUND_HALF_UP
-        )
-
-    total_gross = (base_salary + meal_allowance + overtime_value + refunds_total).quantize(
-        TWO_PLACES, rounding=ROUND_HALF_UP
-    )
-    total_deductions = (
-        inss + irrf + health + dental + transport_voucher_value + discounts_absences_value
-    ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-    net_salary = (total_gross - total_deductions).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
-
-    return MonthlySummaryOut(
-        reference_month=month,
-        reference_year=year,
-        base_salary=base_salary,
-        meal_allowance=meal_allowance,
-        overtime_hours_total=overtime_hours_total,
-        overtime_value=overtime_value,
-        refunds_total=refunds_total,
-        late_hours_total=late_hours_total,
-        late_value=late_value,
-        absence_days_total=absence_days_total,
-        absence_value=absence_value,
-        discounts_absences_value=discounts_absences_value,
-        health_plan_deduction=health,
-        dental_plan_deduction=dental,
-        transport_voucher_value=transport_voucher_value,
-        inss=inss,
-        irrf=irrf,
-        total_gross=total_gross,
-        total_deductions=total_deductions,
-        net_salary=net_salary,
-        fgts_balance=fgts,
-    )
+    return compute_monthly_summary(config, entries, month, year)

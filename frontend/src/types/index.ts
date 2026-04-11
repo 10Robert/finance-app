@@ -19,6 +19,7 @@ export interface Transaction {
   is_recurring: boolean
   recurring_day: number | null
   icon: string
+  source: string | null
   created_at: string
   updated_at: string
 }
