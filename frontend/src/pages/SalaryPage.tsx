@@ -557,6 +557,12 @@ export default function SalaryPage() {
                 </div>
 
                 <div className="space-y-3">
+                  {Number(summary.meal_allowance) > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-[#a1a1aa]">Vale Refeição</span>
+                      <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.meal_allowance))}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-[#a1a1aa]">Horas Extras (+{overtimeTotalHours}h)</span>
                     <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.overtime_value))}</span>
@@ -566,16 +572,28 @@ export default function SalaryPage() {
                     <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.refunds_total))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Atrasos/Faltas</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.discounts_absences_value))}</span>
+                    <span className="text-sm text-[#a1a1aa]">Atrasos ({Number(summary.late_hours_total)}h)</span>
+                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.late_value))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">INSS + IRRF</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.inss) + Number(summary.irrf))}</span>
+                    <span className="text-sm text-[#a1a1aa]">Faltas ({summary.absence_days_total}d)</span>
+                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.absence_value))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Plano de Saúde + Odonto</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.health_plan_deduction) + Number(summary.dental_plan_deduction))}</span>
+                    <span className="text-sm text-[#a1a1aa]">INSS</span>
+                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.inss))}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#a1a1aa]">IRRF</span>
+                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.irrf))}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#a1a1aa]">Plano de Saúde</span>
+                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.health_plan_deduction))}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#a1a1aa]">Plano Odontológico</span>
+                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.dental_plan_deduction))}</span>
                   </div>
                   {Number(summary.transport_voucher_value) > 0 && (
                     <div className="flex justify-between items-center">
