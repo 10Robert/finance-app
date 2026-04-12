@@ -1,9 +1,12 @@
 import json
+import logging
 import re
 
 import anthropic
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
@@ -108,20 +111,27 @@ async def categorize_transactions(transactions: list[dict], categories: list[dic
     return results
 
 
+def _chunk_by_lines(text: str, max_lines: int = 60) -> list[str]:
+    """Split text into chunks by line, trying not to break transactions apart."""
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return [text]
+    chunks = []
+    for i in range(0, len(lines), max_lines):
+        chunks.append("\n".join(lines[i : i + max_lines]))
+    return chunks
+
+
 async def extract_and_categorize_pdf(pdf_text: str, categories: list[dict]) -> list[dict]:
     """Send PDF text to Claude for extraction and categorization."""
-    # Split long PDFs into chunks
-    max_chars = 15000
-    if len(pdf_text) <= max_chars:
-        chunks = [pdf_text]
-    else:
-        chunks = [pdf_text[i : i + max_chars] for i in range(0, len(pdf_text), max_chars)]
+    # Chunk by lines (most extracts have one transaction per line)
+    chunks = _chunk_by_lines(pdf_text, max_lines=60)
 
     results = []
-    for chunk in chunks:
+    for chunk_index, chunk in enumerate(chunks):
         message = await client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=4096,
+            max_tokens=16384,
             temperature=0,
             messages=[
                 {
@@ -134,10 +144,78 @@ async def extract_and_categorize_pdf(pdf_text: str, categories: list[dict]) -> l
             ],
         )
 
+        raw_text = message.content[0].text if message.content else ""
+        stop_reason = getattr(message, "stop_reason", None)
+        logger.info(
+            "PDF extract chunk %d/%d: stop_reason=%s, response_len=%d",
+            chunk_index + 1,
+            len(chunks),
+            stop_reason,
+            len(raw_text),
+        )
+
+        if stop_reason == "max_tokens":
+            logger.warning(
+                "Chunk %d hit max_tokens — response was truncated. Consider smaller chunks.",
+                chunk_index + 1,
+            )
+
         try:
-            parsed = _parse_json_response(message.content[0].text)
+            parsed = _parse_json_response(raw_text)
+            if not isinstance(parsed, list):
+                logger.warning("LLM returned non-list payload for chunk %d", chunk_index + 1)
+                continue
             results.extend(parsed)
-        except (json.JSONDecodeError, IndexError):
+        except (json.JSONDecodeError, IndexError) as exc:
+            logger.error(
+                "Failed to parse LLM response for chunk %d (stop=%s): %s",
+                chunk_index + 1,
+                stop_reason,
+                exc,
+            )
+            # Try to recover any complete objects from a truncated array
+            recovered = _recover_partial_json_array(raw_text)
+            if recovered:
+                logger.info("Recovered %d items from truncated chunk %d", len(recovered), chunk_index + 1)
+                results.extend(recovered)
             continue
 
     return results
+
+
+def _recover_partial_json_array(text: str) -> list[dict]:
+    """Best-effort recovery: parse complete JSON objects from a truncated array."""
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    if not text.startswith("["):
+        return []
+    objects = []
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    objects.append(json.loads(text[start : i + 1]))
+                except json.JSONDecodeError:
+                    pass
+                start = None
+    return objects

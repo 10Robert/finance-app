@@ -117,7 +117,7 @@ export default function SalaryPage() {
         type: 'expense',
         start_date: monthRange.start,
         end_date: monthRange.end,
-        per_page: 1000,
+        per_page: 100,
       }),
   })
 

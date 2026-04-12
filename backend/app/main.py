@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,6 +7,10 @@ from sqlalchemy import text
 
 from app.database import engine, Base
 from app.routers import transactions, categories, imports, dashboard, salary, incomes, monthly_entries
+
+# Make app logger output visible alongside uvicorn's
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+logging.getLogger("app").setLevel(logging.INFO)
 
 
 @asynccontextmanager
