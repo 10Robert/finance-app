@@ -36,6 +36,59 @@ const extractError = (err: unknown): string => {
 }
 
 type TypeFilter = '' | 'expense' | 'income'
+type PeriodMode = 'all' | 'week' | 'month' | 'year' | 'custom'
+
+const pad = (n: number) => String(n).padStart(2, '0')
+const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+/** Convert "YYYY-Www" (HTML week input) → {start, end} ISO dates (Mon..Sun). */
+function weekRange(weekStr: string): { start: string; end: string } {
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(weekStr)
+  if (!m) return { start: '', end: '' }
+  const year = Number(m[1])
+  const week = Number(m[2])
+  // ISO 8601: week 1 is the week containing the first Thursday.
+  const jan4 = new Date(year, 0, 4)
+  const jan4Day = jan4.getDay() || 7 // Sun=0 → 7
+  const week1Monday = new Date(jan4)
+  week1Monday.setDate(jan4.getDate() - (jan4Day - 1))
+  const start = new Date(week1Monday)
+  start.setDate(week1Monday.getDate() + (week - 1) * 7)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  return { start: isoDate(start), end: isoDate(end) }
+}
+
+/** Convert "YYYY-MM" → {start, end} of that month. */
+function monthRange(monthStr: string): { start: string; end: string } {
+  const m = /^(\d{4})-(\d{1,2})$/.exec(monthStr)
+  if (!m) return { start: '', end: '' }
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const start = `${year}-${pad(month)}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const end = `${year}-${pad(month)}-${pad(lastDay)}`
+  return { start, end }
+}
+
+/** Convert "YYYY" → {start, end} of that year. */
+function yearRange(yearStr: string): { start: string; end: string } {
+  if (!/^\d{4}$/.test(yearStr)) return { start: '', end: '' }
+  return { start: `${yearStr}-01-01`, end: `${yearStr}-12-31` }
+}
+
+/** Get current ISO week as "YYYY-Www" matching <input type="week">. */
+function currentIsoWeek(): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  // Thursday in current week decides the year.
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+  const year = d.getFullYear()
+  const week1 = new Date(year, 0, 4)
+  const diff = (d.getTime() - week1.getTime()) / 86400000
+  const weekNum = 1 + Math.round((diff - 3 + ((week1.getDay() + 6) % 7)) / 7)
+  return `${year}-W${pad(weekNum)}`
+}
 
 export default function TransactionsPage() {
   const queryClient = useQueryClient()
@@ -44,11 +97,38 @@ export default function TransactionsPage() {
   const [page, setPage] = useState(1)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('')
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('all')
+  const [weekValue, setWeekValue] = useState<string>(currentIsoWeek())
+  const [monthValue, setMonthValue] = useState<string>(`${now.getFullYear()}-${pad(now.getMonth() + 1)}`)
+  const [yearValue, setYearValue] = useState<string>(String(now.getFullYear()))
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showImport, setShowImport] = useState(false)
+
+  // Resolve the active date range from the selected period mode.
+  const { startDate, endDate } = useMemo(() => {
+    switch (periodMode) {
+      case 'week': {
+        const r = weekRange(weekValue)
+        return { startDate: r.start, endDate: r.end }
+      }
+      case 'month': {
+        const r = monthRange(monthValue)
+        return { startDate: r.start, endDate: r.end }
+      }
+      case 'year': {
+        const r = yearRange(yearValue)
+        return { startDate: r.start, endDate: r.end }
+      }
+      case 'custom':
+        return { startDate: customStart, endDate: customEnd }
+      case 'all':
+      default:
+        return { startDate: '', endDate: '' }
+    }
+  }, [periodMode, weekValue, monthValue, yearValue, customStart, customEnd])
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -277,25 +357,94 @@ export default function TransactionsPage() {
           </button>
         </div>
         <div className="h-6 w-px bg-[#27272a] mx-1 hidden md:block" />
-        <input
-          type="date"
-          value={startDate}
+
+        {/* Period mode selector */}
+        <select
+          value={periodMode}
           onChange={(e) => {
-            setStartDate(e.target.value)
+            setPeriodMode(e.target.value as PeriodMode)
             setPage(1)
           }}
           className={inputClass}
-        />
-        <span className="text-[#a1a1aa] text-sm">até</span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => {
-            setEndDate(e.target.value)
-            setPage(1)
-          }}
-          className={inputClass}
-        />
+          title="Modo de período"
+        >
+          <option value="all">Todo o período</option>
+          <option value="week">Semana</option>
+          <option value="month">Mês</option>
+          <option value="year">Ano</option>
+          <option value="custom">Personalizado</option>
+        </select>
+
+        {/* Period value input — depends on mode */}
+        {periodMode === 'week' && (
+          <input
+            type="week"
+            value={weekValue}
+            onChange={(e) => {
+              setWeekValue(e.target.value)
+              setPage(1)
+            }}
+            className={inputClass}
+          />
+        )}
+        {periodMode === 'month' && (
+          <input
+            type="month"
+            value={monthValue}
+            onChange={(e) => {
+              setMonthValue(e.target.value)
+              setPage(1)
+            }}
+            className={inputClass}
+          />
+        )}
+        {periodMode === 'year' && (
+          <select
+            value={yearValue}
+            onChange={(e) => {
+              setYearValue(e.target.value)
+              setPage(1)
+            }}
+            className={inputClass}
+          >
+            {Array.from({ length: 7 }, (_, i) => now.getFullYear() - 5 + i).map((y) => (
+              <option key={y} value={String(y)} className="bg-[#09090b]">
+                {y}
+              </option>
+            ))}
+          </select>
+        )}
+        {periodMode === 'custom' && (
+          <>
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => {
+                setCustomStart(e.target.value)
+                setPage(1)
+              }}
+              className={inputClass}
+            />
+            <span className="text-[#a1a1aa] text-sm">até</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => {
+                setCustomEnd(e.target.value)
+                setPage(1)
+              }}
+              className={inputClass}
+            />
+          </>
+        )}
+
+        {/* Active range hint */}
+        {periodMode !== 'all' && startDate && endDate && (
+          <span className="text-[10px] uppercase tracking-widest text-[#52525b] hidden lg:inline">
+            {fmtDate(startDate)} → {fmtDate(endDate)}
+          </span>
+        )}
+
         <select
           value={categoryFilter}
           onChange={(e) => {
