@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obsidian Design Library — Framer Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================
+       DESIGN TOKENS
+       ============================================ */
+    :root {
+      /* Background */
+      --bg: #09090b;
+      --surface: #0c0c0f;
+      --surface-container: #121215;
+      --surface-container-low: #0f0f12;
+      --surface-container-high: #18181b;
+      --surface-container-highest: #1e1e22;
+      --surface-variant: #18181b;
+
+      /* Text */
+      --on-surface: #fafafa;
+      --on-surface-variant: #a1a1aa;
+
+      /* Borders */
+      --outline: #52525b;
+      --outline-variant: #27272a;
+
+      /* Primary (Purple) */
+      --primary: #a78bfa;
+      --primary-container: #7c3aed;
+      --on-primary: #0a0012;
+      --on-primary-container: #ede9fe;
+
+      /* Secondary (Gray) */
+      --secondary: #71717a;
+      --secondary-container: #27272a;
+      --on-secondary-container: #a1a1aa;
+
+      /* Tertiary (Green — Income/Success) */
+      --tertiary: #34d399;
+      --tertiary-container: #065f46;
+      --on-tertiary: #001a12;
+
+      /* Error (Red — Expense/Destructive) */
+      --error: #ef4444;
+      --error-container: #3b1111;
+      --on-error-container: #fca5a5;
+
+      /* Typography */
+      --font-family: 'Geist', system-ui, -apple-system, sans-serif;
+
+      /* Radius */
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --radius-full: 9999px;
+
+      /* Spacing */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-6: 24px;
+      --space-8: 32px;
+    }
+
+    /* ============================================
+       BASE RESET
+       ============================================ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-family);
+      background: var(--bg);
+      color: var(--on-surface);
+      line-height: 1.5;
+      padding: 48px;
+    }
+
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      display: inline-block;
+      white-space: nowrap;
+      direction: ltr;
+      font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+
+    /* ============================================
+       LIBRARY LAYOUT
+       ============================================ */
+    .library-header {
+      margin-bottom: 64px;
+    }
+    .library-header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .library-header p {
+      color: var(--on-surface-variant);
+      font-size: 14px;
+    }
+
+    .section {
+      margin-bottom: 64px;
+    }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--primary);
+    }
+    .section-desc {
+      font-size: 13px;
+      color: var(--on-surface-variant);
+      margin-bottom: 24px;
+    }
+    .subsection {
+      margin-bottom: 32px;
+    }
+    .subsection-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--secondary);
+      margin-bottom: 16px;
+    }
+
+    .row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .grid-colors {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .token-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--secondary);
+      margin-top: 8px;
+      font-family: monospace;
+    }
+
+    /* ============================================
+       COLOR SWATCHES
+       ============================================ */
+    .swatch {
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--outline-variant);
+    }
+    .swatch-color {
+      height: 64px;
+    }
+    .swatch-info {
+      padding: 10px 12px;
+      background: var(--surface-container);
+    }
+    .swatch-name {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .swatch-hex {
+      font-size: 11px;
+      color: var(--secondary);
+      font-family: monospace;
+    }
+
+    /* ============================================
+       COMPONENT STYLES (exact project patterns)
+       ============================================ */
+
+    /* --- Buttons --- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-family);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: var(--radius-lg);
+      transition: background-color 0.2s, color 0.2s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: var(--on-primary);
+    }
+    .btn-primary:hover {
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+    }
+    .btn-secondary {
+      background: var(--secondary-container);
+      color: var(--secondary);
+    }
+    .btn-secondary:hover {
+      color: var(--on-surface);
+    }
+    .btn-tertiary {
+      background: var(--tertiary);
+      color: var(--on-tertiary);
+    }
+    .btn-tertiary:hover {
+      background: var(--tertiary-container);
+      color: var(--tertiary);
+    }
+    .btn-destructive {
+      background: var(--error-container);
+      color: var(--on-error-container);
+    }
+    .btn-destructive:hover {
+      background: var(--error);
+      color: #fff;
+    }
+    .btn-outline {
+      background: var(--surface-container-high);
+      color: var(--on-surface);
+      border: 1px solid var(--outline-variant);
+    }
+    .btn-outline:hover {
+      background: var(--surface-container-highest);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--primary);
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .btn-ghost:hover {
+      text-decoration: underline;
+    }
+    .btn-ghost-error {
+      background: transparent;
+      color: var(--error);
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .btn-ghost-error:hover {
+      text-decoration: underline;
+    }
+    .btn-icon {
+      padding: 6px;
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--secondary);
+    }
+    .btn-icon:hover {
+      color: var(--on-surface);
+    }
+    .btn-pagination {
+      padding: 4px 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--outline-variant);
+      background: transparent;
+      color: var(--secondary);
+      font-size: 14px;
+    }
+    .btn-pagination:hover {
+      background: var(--surface-variant);
+    }
+    .btn:disabled, .btn-pagination:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-fab {
+      width: 56px;
+      height: 56px;
+      border-radius: var(--radius-full);
+      background: var(--primary);
+      color: var(--on-primary);
+      border: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* --- Toggle Buttons --- */
+    .toggle-group {
+      display: flex;
+      gap: 8px;
+    }
+    .toggle-btn {
+      flex: 1;
+      padding: 8px;
+      border-radius: var(--radius-lg);
+      border: none;
+      font-family: var(--font-family);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--surface-container-high);
+      color: var(--on-surface-variant);
+    }
+    .toggle-btn:hover {
+      color: var(--on-surface);
+    }
+    .toggle-btn.active-primary {
+      background: var(--primary);
+      color: var(--on-primary);
+    }
+    .toggle-btn.active-tertiary {
+      background: var(--tertiary);
+      color: var(--on-tertiary);
+    }
+    .toggle-btn.active-expense {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--error);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+    }
+    .toggle-btn.active-income {
+      background: rgba(52, 211, 153, 0.2);
+      color: var(--tertiary);
+      border: 1px solid rgba(52, 211, 153, 0.5);
+    }
+
+    /* --- Inputs --- */
+    .input {
+      width: 100%;
+      background: var(--surface-container-high);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-lg);
+      padding: 8px 12px;
+      font-size: 14px;
+      font-family: var(--font-family);
+      color: var(--on-surface);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input::placeholder {
+      color: var(--secondary);
+    }
+    .input:focus {
+      border-color: var(--primary);
+    }
+    .input-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--on-surface-variant);
+      margin-bottom: 6px;
+    }
+    .input-group {
+      margin-bottom: 16px;
+    }
+    select.input {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2371717a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    /* --- Cards --- */
+    .card {
+      background: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      padding: 24px;
+    }
+    .card-low {
+      background: var(--surface-container-low);
+    }
+    .card-primary {
+      background: var(--primary);
+      color: var(--on-primary);
+      border-color: transparent;
+    }
+    .card-error {
+      background: var(--error-container);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+    .card-processing {
+      background: rgba(167, 139, 250, 0.05);
+      border-color: rgba(167, 139, 250, 0.2);
+    }
+
+    /* --- Badges --- */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: var(--radius-full);
+      background: var(--outline-variant);
+      color: var(--on-surface-variant);
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .badge-success .badge-dot { background: var(--tertiary); }
+    .badge-success { color: var(--tertiary); }
+    .badge-error .badge-dot { background: var(--error); }
+    .badge-error { color: var(--error); }
+    .badge-warning .badge-dot { background: #facc15; }
+    .badge-warning { color: #facc15; }
+    .badge-info .badge-dot { background: var(--primary); }
+    .badge-info { color: var(--primary); }
+
+    /* --- Table --- */
+    .table-container {
+      background: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+    }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .table th {
+      padding: 16px 24px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--secondary);
+      text-align: left;
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .table td {
+      padding: 16px 24px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .table tr:last-child td {
+      border-bottom: none;
+    }
+    .table tr:hover td {
+      background: var(--surface-variant);
+    }
+
+    /* --- Modal --- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    .modal-demo {
+      position: relative;
+      background: rgba(0, 0, 0, 0.7);
+      border-radius: var(--radius-xl);
+      padding: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal {
+      background: var(--surface-container);
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+      padding: 24px;
+      width: 100%;
+      max-width: 480px;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    /* --- Progress Bars --- */
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: var(--outline-variant);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width 0.5s;
+    }
+    .progress-fill-tertiary { background: var(--tertiary); }
+    .progress-fill-error { background: var(--error); }
+    .progress-fill-primary { background: var(--primary); }
+
+    /* --- Upload Area --- */
+    .upload-area {
+      border: 2px dashed var(--outline-variant);
+      border-radius: var(--radius-xl);
+      padding: 48px;
+      text-align: center;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .upload-area:hover {
+      border-color: var(--primary);
+      background: rgba(167, 139, 250, 0.05);
+    }
+
+    /* --- Navigation --- */
+    .nav-demo {
+      width: 256px;
+      border: 1px solid var(--outline-variant);
+      border-radius: var(--radius-xl);
+      padding: 24px 16px;
+      background: var(--bg);
+    }
+    .nav-brand {
+      padding: 0 16px;
+      margin-bottom: 32px;
+    }
+    .nav-brand h2 {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .nav-brand p {
+      font-size: 11px;
+      color: var(--on-surface-variant);
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      font-size: 14px;
+      color: var(--on-surface-variant);
+      text-decoration: none;
+      border-radius: 0;
+      transition: all 0.2s;
+      margin-bottom: 4px;
+    }
+    .nav-item:hover {
+      background: var(--outline-variant);
+      color: var(--on-surface);
+    }
+    .nav-item.active {
+      color: var(--primary);
+      font-weight: 700;
+      border-right: 2px solid var(--primary);
+    }
+
+    /* --- Typography Specimens --- */
+    .type-specimen {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--outline-variant);
+    }
+    .type-specimen:last-child {
+      border-bottom: none;
+    }
+    .type-meta {
+      font-size: 11px;
+      color: var(--secondary);
+      font-family: monospace;
+      margin-top: 4px;
+    }
+
+    /* --- Icon Container --- */
+    .icon-container {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      border-radius: var(--radius-lg);
+    }
+    .icon-container-primary { background: rgba(167, 139, 250, 0.1); color: var(--primary); }
+    .icon-container-tertiary { background: rgba(52, 211, 153, 0.1); color: var(--tertiary); }
+    .icon-container-error { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+
+    /* Copy button */
+    .copy-token {
+      display: inline-block;
+      font-family: monospace;
+      font-size: 11px;
+      background: var(--surface-container-high);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--on-surface-variant);
+      cursor: pointer;
+      border: 1px solid var(--outline-variant);
+    }
+    .copy-token:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Divider */
+    hr {
+      border: none;
+      border-top: 1px solid var(--outline-variant);
+      margin: 48px 0;
+    }
+
+    /* Amount styles */
+    .amount-income { color: var(--tertiary); font-weight: 700; }
+    .amount-expense { color: var(--error); font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="library-header">
+    <h1>Obsidian Design Library</h1>
+    <p>Sistema de design do projeto Finance App — Referencia para Framer</p>
+  </div>
+
+  <!-- ==============================
+       1. COLORS
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Cores</h2>
+    <p class="section-desc">Paleta completa com tokens CSS. Clique para copiar o hex.</p>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Backgrounds & Surfaces</h3>
+      <div class="grid-colors">
+        <div class="swatch"><div class="swatch-color" style="background:#09090b"></div><div class="swatch-info"><div class="swatch-name">Background</div><div class="swatch-hex">#09090b</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#0c0c0f"></div><div class="swatch-info"><div class="swatch-name">Surface</div><div class="swatch-hex">#0c0c0f</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#0f0f12"></div><div class="swatch-info"><div class="swatch-name">Container Low</div><div class="swatch-hex">#0f0f12</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#121215"></div><div class="swatch-info"><div class="swatch-name">Container</div><div class="swatch-hex">#121215</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#18181b"></div><div class="swatch-info"><div class="swatch-name">Container High</div><div class="swatch-hex">#18181b</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#1e1e22"></div><div class="swatch-info"><div class="swatch-name">Container Highest</div><div class="swatch-hex">#1e1e22</div></div></div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Text & Borders</h3>
+      <div class="grid-colors">
+        <div class="swatch"><div class="swatch-color" style="background:#fafafa"></div><div class="swatch-info"><div class="swatch-name">On Surface</div><div class="swatch-hex">#fafafa</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#a1a1aa"></div><div class="swatch-info"><div class="swatch-name">On Surface Variant</div><div class="swatch-hex">#a1a1aa</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#71717a"></div><div class="swatch-info"><div class="swatch-name">Secondary</div><div class="swatch-hex">#71717a</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#52525b"></div><div class="swatch-info"><div class="swatch-name">Outline</div><div class="swatch-hex">#52525b</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#27272a"></div><div class="swatch-info"><div class="swatch-name">Outline Variant</div><div class="swatch-hex">#27272a</div></div></div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Brand & Semantic</h3>
+      <div class="grid-colors">
+        <div class="swatch"><div class="swatch-color" style="background:#a78bfa"></div><div class="swatch-info"><div class="swatch-name">Primary</div><div class="swatch-hex">#a78bfa</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#7c3aed"></div><div class="swatch-info"><div class="swatch-name">Primary Container</div><div class="swatch-hex">#7c3aed</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#34d399"></div><div class="swatch-info"><div class="swatch-name">Tertiary (Income)</div><div class="swatch-hex">#34d399</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#065f46"></div><div class="swatch-info"><div class="swatch-name">Tertiary Container</div><div class="swatch-hex">#065f46</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#ef4444"></div><div class="swatch-info"><div class="swatch-name">Error (Expense)</div><div class="swatch-hex">#ef4444</div></div></div>
+        <div class="swatch"><div class="swatch-color" style="background:#3b1111"></div><div class="swatch-info"><div class="swatch-name">Error Container</div><div class="swatch-hex">#3b1111</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       2. TYPOGRAPHY
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Tipografia</h2>
+    <p class="section-desc">Fonte: Geist (Google Fonts) — Icones: Material Symbols Outlined</p>
+
+    <div class="card" style="max-width:640px">
+      <div class="type-specimen">
+        <div style="font-size:32px; font-weight:800; letter-spacing:-0.02em">Heading Display</div>
+        <div class="type-meta">32px / 800 / letter-spacing: -0.02em</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:24px; font-weight:700; letter-spacing:-0.01em">Page Title</div>
+        <div class="type-meta">24px / 700 / letter-spacing: -0.01em</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:20px; font-weight:700">Section Title</div>
+        <div class="type-meta">20px / 700</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:18px; font-weight:700">Modal Title</div>
+        <div class="type-meta">18px / 700</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:16px; font-weight:600">Card Heading</div>
+        <div class="type-meta">16px / 600</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:14px; font-weight:400">Body Text — usado em paragrafos, tabelas e descricoes gerais.</div>
+        <div class="type-meta">14px / 400</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:14px; font-weight:700">Body Bold — valores e destaques inline.</div>
+        <div class="type-meta">14px / 700</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:12px; font-weight:400; color:var(--on-surface-variant)">Small Text — descricoes secundarias e timestamps.</div>
+        <div class="type-meta">12px / 400 / color: on-surface-variant</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:0.08em; color:var(--on-surface-variant)">Form Label</div>
+        <div class="type-meta">11px / 500 / uppercase / letter-spacing: 0.08em</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:var(--secondary)">STATUS LABEL</div>
+        <div class="type-meta">10px / 700 / uppercase / letter-spacing: 0.12em</div>
+      </div>
+      <div class="type-specimen">
+        <div style="font-size:32px; font-weight:900">R$ 5.000,00</div>
+        <div class="type-meta">32px / 900 — Large Amount Display</div>
+      </div>
+      <div class="type-specimen" style="border-bottom:none">
+        <div><span class="amount-income" style="font-size:14px">+ R$ 1.200,00</span>&nbsp;&nbsp;&nbsp;<span class="amount-expense" style="font-size:14px">- R$ 850,00</span></div>
+        <div class="type-meta">14px / 700 — Income (tertiary) & Expense (error)</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       3. BUTTONS
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Botoes</h2>
+    <p class="section-desc">Todos os estilos de botao usados no projeto.</p>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Filled Buttons</h3>
+      <div class="row">
+        <button class="btn btn-primary">Primary</button>
+        <button class="btn btn-primary"><span class="material-symbols-outlined" style="font-size:18px">add</span> Com Icone</button>
+        <button class="btn btn-secondary">Secondary</button>
+        <button class="btn btn-tertiary">Success</button>
+        <button class="btn btn-destructive">Destructive</button>
+        <button class="btn btn-primary" disabled>Disabled</button>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Outline & Ghost</h3>
+      <div class="row">
+        <button class="btn btn-outline">Outline</button>
+        <button class="btn btn-outline"><span class="material-symbols-outlined" style="font-size:18px">upload_file</span> Upload</button>
+        <button class="btn btn-ghost">Link</button>
+        <button class="btn btn-ghost-error">Excluir</button>
+        <button class="btn btn-pagination">Anterior</button>
+        <button class="btn btn-pagination">Proximo</button>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Icon Buttons</h3>
+      <div class="row">
+        <button class="btn btn-icon"><span class="material-symbols-outlined">edit</span></button>
+        <button class="btn btn-icon"><span class="material-symbols-outlined">delete</span></button>
+        <button class="btn btn-icon"><span class="material-symbols-outlined">more_vert</span></button>
+        <div class="icon-container icon-container-primary"><span class="material-symbols-outlined">payments</span></div>
+        <div class="icon-container icon-container-tertiary"><span class="material-symbols-outlined">trending_up</span></div>
+        <div class="icon-container icon-container-error"><span class="material-symbols-outlined">trending_down</span></div>
+        <button class="btn-fab"><span class="material-symbols-outlined">add</span></button>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3 class="subsection-title">Toggle Buttons</h3>
+      <div style="max-width:320px; margin-bottom:16px">
+        <div style="font-size:12px; color:var(--secondary); margin-bottom:8px">Primary Toggle</div>
+        <div class="toggle-group">
+          <button class="toggle-btn active-primary">Valor Fixo (R$)</button>
+          <button class="toggle-btn">Percentual (%)</button>
+        </div>
+      </div>
+      <div style="max-width:320px; margin-bottom:16px">
+        <div style="font-size:12px; color:var(--secondary); margin-bottom:8px">Tertiary Toggle</div>
+        <div class="toggle-group">
+          <button class="toggle-btn active-tertiary">70%</button>
+          <button class="toggle-btn">100%</button>
+        </div>
+      </div>
+      <div style="max-width:320px">
+        <div style="font-size:12px; color:var(--secondary); margin-bottom:8px">Type Toggle (Expense/Income)</div>
+        <div class="toggle-group">
+          <button class="toggle-btn active-expense">Despesa</button>
+          <button class="toggle-btn active-income">Receita</button>
+          <button class="toggle-btn">Todos</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       4. INPUTS
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Campos de Entrada</h2>
+    <p class="section-desc">Inputs, selects e textareas com estados default, focus e placeholder.</p>
+
+    <div style="max-width:480px">
+      <div class="input-group">
+        <label class="input-label">Texto</label>
+        <input class="input" type="text" placeholder="Digite aqui...">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Valor (R$)</label>
+        <input class="input" type="number" step="0.01" placeholder="0.00">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Data</label>
+        <input class="input" type="date">
+      </div>
+      <div class="input-group">
+        <label class="input-label">Categoria</label>
+        <select class="input">
+          <option>Selecione...</option>
+          <option>Alimentacao</option>
+          <option>Transporte</option>
+          <option>Moradia</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Observacoes (opcional)</label>
+        <textarea class="input" rows="3" placeholder="Notas adicionais..."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       5. CARDS
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Cards</h2>
+    <p class="section-desc">Containers para agrupar conteudo.</p>
+
+    <div class="grid-4">
+      <div class="card">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--on-surface-variant); margin-bottom:8px">Saldo Total</div>
+        <div style="font-size:24px; font-weight:900">R$ 12.450</div>
+        <div style="font-size:12px; color:var(--tertiary); margin-top:4px">+5.2%</div>
+      </div>
+      <div class="card card-primary">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.7; margin-bottom:8px">Receita</div>
+        <div style="font-size:24px; font-weight:900">R$ 8.500</div>
+      </div>
+      <div class="card card-low">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
+          <div class="icon-container icon-container-error"><span class="material-symbols-outlined">remove_circle</span></div>
+          <span style="font-weight:600">Descontos</span>
+        </div>
+        <div style="font-size:14px; color:var(--on-surface-variant)">INSS, IRRF, etc.</div>
+      </div>
+      <div class="card card-error">
+        <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--on-error-container); margin-bottom:8px">Erro</div>
+        <div style="font-size:14px; color:var(--on-error-container)">Falha ao processar.</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       6. BADGES
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Badges & Status</h2>
+    <p class="section-desc">Indicadores de estado e categorias.</p>
+
+    <div class="row">
+      <span class="badge badge-info"><span class="badge-dot"></span>Pendente</span>
+      <span class="badge badge-warning"><span class="badge-dot"></span>Processando</span>
+      <span class="badge badge-success"><span class="badge-dot"></span>Concluido</span>
+      <span class="badge badge-error"><span class="badge-dot"></span>Falhou</span>
+      <span class="badge">Alimentacao</span>
+      <span class="badge">Transporte</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       7. PROGRESS BARS
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Progress Bars</h2>
+    <p class="section-desc">Indicadores de progresso e proporcao.</p>
+
+    <div style="max-width:400px; display:flex; flex-direction:column; gap:16px">
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
+          <span style="color:var(--on-surface-variant)">Receita</span>
+          <span style="color:var(--tertiary)">75%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill progress-fill-tertiary" style="width:75%"></div></div>
+      </div>
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
+          <span style="color:var(--on-surface-variant)">Despesas</span>
+          <span style="color:var(--error)">45%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill progress-fill-error" style="width:45%"></div></div>
+      </div>
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px">
+          <span style="color:var(--on-surface-variant)">Meta</span>
+          <span style="color:var(--primary)">90%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill progress-fill-primary" style="width:90%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       8. TABLE
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Tabela</h2>
+    <p class="section-desc">Padrao de tabela com hover, dividers e paginacao.</p>
+
+    <div class="table-container" style="max-width:720px">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Descricao</th>
+            <th>Categoria</th>
+            <th style="text-align:right">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color:var(--secondary)">01/04/2026</td>
+            <td>Supermercado</td>
+            <td><span class="badge">Alimentacao</span></td>
+            <td style="text-align:right" class="amount-expense">- R$ 350,00</td>
+          </tr>
+          <tr>
+            <td style="color:var(--secondary)">05/04/2026</td>
+            <td>Salario</td>
+            <td><span class="badge">Salario</span></td>
+            <td style="text-align:right" class="amount-income">+ R$ 5.000,00</td>
+          </tr>
+          <tr>
+            <td style="color:var(--secondary)">10/04/2026</td>
+            <td>Uber</td>
+            <td><span class="badge">Transporte</span></td>
+            <td style="text-align:right" class="amount-expense">- R$ 45,00</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="padding:12px 24px; border-top:1px solid var(--outline-variant); display:flex; justify-content:center; gap:8px">
+        <button class="btn btn-pagination" disabled>Anterior</button>
+        <button class="btn btn-pagination">Proximo</button>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       9. MODAL
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Modal</h2>
+    <p class="section-desc">Dialog para criacao/edicao de registros.</p>
+
+    <div class="modal-demo">
+      <div class="modal">
+        <h3 class="modal-title">Nova Transacao</h3>
+        <div class="toggle-group" style="margin-bottom:16px">
+          <button class="toggle-btn active-expense">Despesa</button>
+          <button class="toggle-btn">Receita</button>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Descricao</label>
+          <input class="input" type="text" placeholder="Ex: Supermercado">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Valor (R$)</label>
+          <input class="input" type="number" placeholder="0.00">
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn btn-secondary" style="flex:1">Cancelar</button>
+          <button class="btn btn-primary" style="flex:1">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       10. UPLOAD AREA
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Upload Area</h2>
+    <p class="section-desc">Zona de drag-and-drop para upload de arquivos.</p>
+
+    <div class="upload-area" style="max-width:480px">
+      <span class="material-symbols-outlined" style="font-size:48px; color:var(--secondary); margin-bottom:16px; display:block">cloud_upload</span>
+      <p style="font-size:14px; color:var(--on-surface-variant); margin-bottom:16px">Arraste seu arquivo aqui ou</p>
+      <button class="btn btn-primary">Selecionar Arquivo</button>
+      <p style="font-size:12px; color:var(--secondary); margin-top:12px">CSV, PDF</p>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       11. NAVIGATION
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Navegacao (Sidebar)</h2>
+    <p class="section-desc">Menu lateral com indicador de pagina ativa.</p>
+
+    <div class="nav-demo">
+      <div class="nav-brand">
+        <h2>Obsidian</h2>
+        <p>Gestao Financeira</p>
+      </div>
+      <a class="nav-item active"><span class="material-symbols-outlined">dashboard</span>Painel</a>
+      <a class="nav-item"><span class="material-symbols-outlined">payments</span>Transacoes</a>
+      <a class="nav-item"><span class="material-symbols-outlined">upload_file</span>Importar</a>
+      <a class="nav-item"><span class="material-symbols-outlined">account_balance_wallet</span>Salario</a>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ==============================
+       12. DESIGN TOKENS SUMMARY
+       ============================== -->
+  <div class="section">
+    <h2 class="section-title">Tokens para Framer</h2>
+    <p class="section-desc">Copie estes valores diretamente para o Framer.</p>
+
+    <div class="card" style="max-width:640px; font-size:13px; font-family:monospace; line-height:2">
+      <div style="color:var(--secondary); margin-bottom:8px">/* Font */</div>
+      <div>font-family: 'Geist', system-ui, sans-serif</div>
+      <br>
+      <div style="color:var(--secondary); margin-bottom:8px">/* Border Radius */</div>
+      <div>Small: 6px | Medium: 8px | Large: 12px | XL: 16px | Full: 9999px</div>
+      <br>
+      <div style="color:var(--secondary); margin-bottom:8px">/* Spacing Scale */</div>
+      <div>4px | 8px | 12px | 16px | 24px | 32px | 48px</div>
+      <br>
+      <div style="color:var(--secondary); margin-bottom:8px">/* Shadows */</div>
+      <div>Modal: 0 24px 48px rgba(0,0,0,0.5)</div>
+      <div>FAB: 0 8px 24px rgba(0,0,0,0.4)</div>
+      <br>
+      <div style="color:var(--secondary); margin-bottom:8px">/* Transitions */</div>
+      <div>Default: 0.2s ease | Progress: 0.5s ease</div>
+    </div>
+  </div>
+
+</body>
+</html>
