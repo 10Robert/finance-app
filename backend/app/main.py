@@ -36,6 +36,14 @@ async def lifespan(app: FastAPI):
                 ADD COLUMN IF NOT EXISTS transport_voucher_percent NUMERIC(5,2) NOT NULL DEFAULT 6.00,
                 ADD COLUMN IF NOT EXISTS fgts_balance NUMERIC(12,2) NOT NULL DEFAULT 0
         """))
+        # Normalize legacy negative amounts: imports stored expenses as
+        # negatives, but the canonical convention is positive amount + `type`.
+        await conn.execute(text("""
+            UPDATE transactions SET amount = ABS(amount) WHERE amount < 0
+        """))
+        await conn.execute(text("""
+            UPDATE staged_transactions SET amount = ABS(amount) WHERE amount < 0
+        """))
     yield
 
 

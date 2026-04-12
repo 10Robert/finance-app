@@ -121,8 +121,15 @@ export default function SalaryPage() {
       }),
   })
 
+  // Despesas podem estar gravadas como negativas (importadas) ou positivas
+  // (criadas pelo formulário). Sempre usamos o valor absoluto para evitar
+  // inverter o sinal no cálculo do Resultado Mensal.
   const expenseTotal = useMemo(
-    () => (monthExpenses?.items || []).reduce((s, t) => s + Number(t.amount || 0), 0),
+    () =>
+      (monthExpenses?.items || []).reduce(
+        (s, t) => s + Math.abs(Number(t.amount || 0)),
+        0,
+      ),
     [monthExpenses],
   )
 

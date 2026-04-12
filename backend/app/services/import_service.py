@@ -41,11 +41,13 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
             for i, llm_row in enumerate(llm_results):
                 original_row = parsed_rows[llm_row.get("index", i)] if llm_row.get("index", i) < len(parsed_rows) else None
 
+                raw_amount = _parse_amount(original_row["amount"] if original_row else str(llm_row.get("amount", 0)))
                 staged = StagedTransaction(
                     bank_import_id=bank_import_id,
                     date=_parse_date(original_row["date"] if original_row else llm_row.get("date", "")),
                     description=llm_row.get("cleaned_description", original_row["description"] if original_row else ""),
-                    amount=_parse_amount(original_row["amount"] if original_row else str(llm_row.get("amount", 0))),
+                    # Always store amounts as positive — direction is encoded in `type`
+                    amount=abs(raw_amount),
                     type=llm_row.get("type", "expense"),
                     category_id=category_map.get(llm_row.get("category", "")),
                     confidence=Decimal(str(llm_row.get("confidence", 0))),
@@ -59,11 +61,13 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
             llm_results = await llm_service.extract_and_categorize_pdf(pdf_text, categories)
 
             for llm_row in llm_results:
+                raw_amount = _parse_amount(str(llm_row.get("amount", 0)))
                 staged = StagedTransaction(
                     bank_import_id=bank_import_id,
                     date=_parse_date(llm_row.get("date", "")),
                     description=llm_row.get("cleaned_description", llm_row.get("description", "")),
-                    amount=_parse_amount(str(llm_row.get("amount", 0))),
+                    # Always store amounts as positive — direction is encoded in `type`
+                    amount=abs(raw_amount),
                     type=llm_row.get("type", "expense"),
                     category_id=category_map.get(llm_row.get("category", "")),
                     confidence=Decimal(str(llm_row.get("confidence", 0))),
