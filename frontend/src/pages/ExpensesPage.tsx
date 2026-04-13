@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getExpensesChart,
   getTransactionsGrouped,
   getTopCategoriesRange,
   getCategoryTransactions,
+  createFixedExpense,
 } from '../api/client'
-import type { Transaction, SpendingByCategory } from '../types'
+import type { Transaction, SpendingByCategory, FixedExpenseCreate } from '../types'
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 
@@ -63,6 +64,7 @@ export default function ExpensesPage() {
   const [showAllOneTime, setShowAllOneTime] = useState(false)
   const [showAllRecurring, setShowAllRecurring] = useState(false)
   const [drillCategory, setDrillCategory] = useState<string | null>(null)
+  const [makeFixedTx, setMakeFixedTx] = useState<Transaction | null>(null)
 
   /* query params */
   const chartParams = useMemo(() => {
@@ -312,7 +314,9 @@ export default function ExpensesPage() {
           </div>
           <div className="divide-y divide-[#27272a]/50">
             {oneTime.length > 0 ? (
-              oneTime.slice(0, 4).map((t) => <ExpenseRow key={t.id} tx={t} />)
+              oneTime.slice(0, 4).map((t) => (
+                <ExpenseRow key={t.id} tx={t} onMakeFixed={() => setMakeFixedTx(t)} />
+              ))
             ) : (
               <p className="p-6 text-center text-sm text-[#a1a1aa]">Nenhum gasto avulso no período</p>
             )}
@@ -401,6 +405,7 @@ export default function ExpensesPage() {
           icon="shopping_cart"
           transactions={oneTime}
           onClose={() => setShowAllOneTime(false)}
+          onMakeFixed={(tx) => { setShowAllOneTime(false); setMakeFixedTx(tx) }}
         />
       )}
       {showAllRecurring && (
@@ -418,15 +423,21 @@ export default function ExpensesPage() {
           onClose={() => setDrillCategory(null)}
         />
       )}
+      {makeFixedTx && (
+        <MakeFixedModal
+          tx={makeFixedTx}
+          onClose={() => setMakeFixedTx(null)}
+        />
+      )}
     </div>
   )
 }
 
 /* ─── Expense Row ──────────────────────────────────────────────────────── */
 
-function ExpenseRow({ tx }: { tx: Transaction }) {
+function ExpenseRow({ tx, onMakeFixed }: { tx: Transaction; onMakeFixed?: () => void }) {
   return (
-    <div className="px-5 py-3 flex items-center justify-between hover:bg-[#18181b]/30 transition-colors">
+    <div className="px-5 py-3 flex items-center justify-between hover:bg-[#18181b]/30 transition-colors group">
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-center text-[#a1a1aa]">
           <span className="material-symbols-outlined text-lg">{tx.icon || 'receipt_long'}</span>
@@ -438,7 +449,18 @@ function ExpenseRow({ tx }: { tx: Transaction }) {
           </p>
         </div>
       </div>
-      <p className="text-sm font-bold text-[#ef4444]">-{fmt(Math.abs(Number(tx.amount)))}</p>
+      <div className="flex items-center gap-2">
+        {onMakeFixed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onMakeFixed() }}
+            title="Tornar gasto fixo"
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-[#a1a1aa] hover:text-[#3b82f6]"
+          >
+            <span className="material-symbols-outlined text-lg">repeat</span>
+          </button>
+        )}
+        <p className="text-sm font-bold text-[#ef4444]">-{fmt(Math.abs(Number(tx.amount)))}</p>
+      </div>
     </div>
   )
 }
@@ -520,11 +542,13 @@ function TransactionListModal({
   icon,
   transactions,
   onClose,
+  onMakeFixed,
 }: {
   title: string
   icon: string
   transactions: Transaction[]
   onClose: () => void
+  onMakeFixed?: (tx: Transaction) => void
 }) {
   return (
     <div
@@ -547,7 +571,11 @@ function TransactionListModal({
         </div>
         <div className="overflow-y-auto divide-y divide-[#27272a]/50 flex-1">
           {transactions.map((t) => (
-            <ExpenseRow key={t.id} tx={t} />
+            <ExpenseRow
+              key={t.id}
+              tx={t}
+              onMakeFixed={onMakeFixed ? () => onMakeFixed(t) : undefined}
+            />
           ))}
         </div>
         <div className="px-6 py-3 border-t border-[#27272a] flex justify-between items-center shrink-0 bg-[#09090b]">
@@ -614,6 +642,179 @@ function CategoryDrillModal({
           <span className="text-sm text-[#a1a1aa]">{transactions?.length ?? 0} transações</span>
           <span className="text-sm font-bold text-[#ef4444]">Total: {fmt(total)}</span>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Make Fixed Modal ─────────────────────────────────────────────────── */
+
+function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const txDay = new Date(tx.date + 'T00:00:00').getDate()
+  const now = new Date()
+
+  const [isPermanent, setIsPermanent] = useState(true)
+  const [dayOfMonth, setDayOfMonth] = useState(String(txDay))
+  const [startDate, setStartDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`)
+  const [endDate, setEndDate] = useState('')
+  const [success, setSuccess] = useState(false)
+
+  const createMut = useMutation({
+    mutationFn: createFixedExpense,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions-grouped'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+      setSuccess(true)
+    },
+    onError: (err) => {
+      const e = err as { response?: { data?: { detail?: string } }; message?: string }
+      alert(`Erro: ${e?.response?.data?.detail || e?.message || 'Erro desconhecido'}`)
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const data: FixedExpenseCreate = {
+      description: tx.description,
+      amount: Math.abs(Number(tx.amount)),
+      category_id: tx.category_id,
+      day_of_month: Number(dayOfMonth),
+      is_permanent: isPermanent,
+      start_date: startDate,
+      end_date: isPermanent ? null : endDate || null,
+      icon: tx.icon || 'repeat',
+    }
+    createMut.mutate(data)
+  }
+
+  const inputClass =
+    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+          <h3 className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#3b82f6]">repeat</span>
+            Tornar Gasto Fixo
+          </h3>
+          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+            close
+          </button>
+        </div>
+
+        {success ? (
+          <div className="p-6 text-center space-y-3">
+            <span className="material-symbols-outlined text-[#34d399] text-5xl block">check_circle</span>
+            <p className="text-[#fafafa] font-bold">Gasto fixo criado!</p>
+            <p className="text-sm text-[#a1a1aa]">
+              "{tx.description}" agora é um gasto fixo mensal. As transações foram geradas automaticamente.
+            </p>
+            <button
+              onClick={onClose}
+              className="mt-2 px-6 py-2 bg-[#a78bfa] text-[#0a0012] rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {/* Preview */}
+            <div className="bg-[#09090b] border border-[#27272a] rounded-lg p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-center text-[#a1a1aa]">
+                <span className="material-symbols-outlined">{tx.icon || 'receipt_long'}</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-[#fafafa]">{tx.description}</p>
+                <p className="text-xs text-[#a1a1aa]">{tx.category?.name || 'Sem categoria'}</p>
+              </div>
+              <p className="text-sm font-bold text-[#ef4444]">{fmt(Math.abs(Number(tx.amount)))}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Dia do mês</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={dayOfMonth}
+                  onChange={(e) => setDayOfMonth(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Início</label>
+                <input
+                  type="date"
+                  required
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-[#a1a1aa] mb-1">Duração</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPermanent(true)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isPermanent
+                      ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
+                      : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
+                  }`}
+                >
+                  Permanente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPermanent(false)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    !isPermanent
+                      ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
+                      : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
+                  }`}
+                >
+                  Com prazo
+                </button>
+              </div>
+            </div>
+
+            {!isPermanent && (
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Data final</label>
+                <input
+                  type="date"
+                  required={!isPermanent}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={createMut.isPending}
+              className="w-full bg-[#3b82f6] text-white py-2 rounded-lg text-sm font-bold hover:bg-[#3b82f6]/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-base">repeat</span>
+              {createMut.isPending ? 'Cadastrando…' : 'Confirmar como Gasto Fixo'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   )
