@@ -130,6 +130,41 @@ class OvertimeEntry(Base):
     salary_config: Mapped["SalaryConfig"] = relationship(back_populates="overtime_entries")
 
 
+class FixedExpense(Base):
+    """A recurring monthly expense: either permanent or with an end date."""
+    __tablename__ = "fixed_expenses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    description: Mapped[str] = mapped_column(String(500))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    day_of_month: Mapped[int] = mapped_column(Integer, default=1)
+    is_permanent: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    start_date: Mapped[date] = mapped_column(Date)  # first month (YYYY-MM-01)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # null = permanent
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    icon: Mapped[str] = mapped_column(String(50), default="repeat", server_default="repeat")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    category: Mapped[Category | None] = relationship()
+
+
+class InstallmentPurchase(Base):
+    """A product bought in installments: total value split across N months."""
+    __tablename__ = "installment_purchases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    description: Mapped[str] = mapped_column(String(500))
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    installment_count: Mapped[int] = mapped_column(Integer)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    start_date: Mapped[date] = mapped_column(Date)  # first installment month
+    icon: Mapped[str] = mapped_column(String(50), default="credit_card", server_default="credit_card")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    category: Mapped[Category | None] = relationship()
+
+
 class StagedTransaction(Base):
     __tablename__ = "staged_transactions"
 

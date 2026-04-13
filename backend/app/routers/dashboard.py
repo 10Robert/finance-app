@@ -71,20 +71,37 @@ def _get_year_range(year: int):
 # GET /api/dashboard/balance
 @router.get("/balance", response_model=BalanceOut)
 async def get_balance(
-    year: int = Query(...),
+    year: int = Query(None),
     month: Optional[int] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    if month:
+    if start_date and end_date:
+        # Custom date range — use directly
+        start, end = start_date, end_date
+        delta = (end_date - start_date).days
+        prev_end = start_date - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=delta)
+    elif year and month:
         start, end = _get_month_range(year, month)
-        # Previous period for comparison
         if month == 1:
             prev_start, prev_end = _get_month_range(year - 1, 12)
         else:
             prev_start, prev_end = _get_month_range(year, month - 1)
-    else:
+    elif year:
         start, end = _get_year_range(year)
         prev_start, prev_end = _get_year_range(year - 1)
+    else:
+        # Default to current month
+        today = date.today()
+        year = today.year
+        month = today.month
+        start, end = _get_month_range(year, month)
+        if month == 1:
+            prev_start, prev_end = _get_month_range(year - 1, 12)
+        else:
+            prev_start, prev_end = _get_month_range(year, month - 1)
 
     async def _sum_period(s: date, e: date):
         q = select(

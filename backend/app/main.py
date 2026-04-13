@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine, Base
-from app.routers import transactions, categories, imports, dashboard, salary, incomes, monthly_entries
+from app.routers import transactions, categories, imports, dashboard, salary, incomes, monthly_entries, fixed_expenses, installments
 
 # Make app logger output visible alongside uvicorn's
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
@@ -64,6 +64,8 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(salary.router, prefix="/api/salary", tags=["salary"])
 app.include_router(incomes.router, prefix="/api/incomes", tags=["incomes"])
 app.include_router(monthly_entries.router, prefix="/api/monthly-entries", tags=["monthly-entries"])
+app.include_router(fixed_expenses.router, prefix="/api/fixed-expenses", tags=["fixed-expenses"])
+app.include_router(installments.router, prefix="/api/installments", tags=["installments"])
 
 
 @app.get("/api/health")

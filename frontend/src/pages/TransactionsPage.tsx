@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getTransactions,
@@ -12,8 +12,15 @@ import {
   getStagedTransactions,
   updateStagedTransactions,
   confirmImport,
+  createFixedExpense,
+  deleteFixedExpense,
+  getFixedExpenses,
+  createInstallment,
+  deleteInstallment,
+  getInstallments,
+  importTransactionsJson,
 } from '../api/client'
-import type { TransactionCreate, Transaction } from '../types'
+import type { TransactionCreate, Transaction, FixedExpenseCreate, InstallmentPurchaseCreate } from '../types'
 import TransactionForm from '../components/TransactionForm'
 import ImportReview from '../components/ImportReview'
 
@@ -41,15 +48,13 @@ type PeriodMode = 'all' | 'week' | 'month' | 'year' | 'custom'
 const pad = (n: number) => String(n).padStart(2, '0')
 const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
-/** Convert "YYYY-Www" (HTML week input) → {start, end} ISO dates (Mon..Sun). */
 function weekRange(weekStr: string): { start: string; end: string } {
   const m = /^(\d{4})-W(\d{1,2})$/.exec(weekStr)
   if (!m) return { start: '', end: '' }
   const year = Number(m[1])
   const week = Number(m[2])
-  // ISO 8601: week 1 is the week containing the first Thursday.
   const jan4 = new Date(year, 0, 4)
-  const jan4Day = jan4.getDay() || 7 // Sun=0 → 7
+  const jan4Day = jan4.getDay() || 7
   const week1Monday = new Date(jan4)
   week1Monday.setDate(jan4.getDate() - (jan4Day - 1))
   const start = new Date(week1Monday)
@@ -59,7 +64,6 @@ function weekRange(weekStr: string): { start: string; end: string } {
   return { start: isoDate(start), end: isoDate(end) }
 }
 
-/** Convert "YYYY-MM" → {start, end} of that month. */
 function monthRange(monthStr: string): { start: string; end: string } {
   const m = /^(\d{4})-(\d{1,2})$/.exec(monthStr)
   if (!m) return { start: '', end: '' }
@@ -71,17 +75,14 @@ function monthRange(monthStr: string): { start: string; end: string } {
   return { start, end }
 }
 
-/** Convert "YYYY" → {start, end} of that year. */
 function yearRange(yearStr: string): { start: string; end: string } {
   if (!/^\d{4}$/.test(yearStr)) return { start: '', end: '' }
   return { start: `${yearStr}-01-01`, end: `${yearStr}-12-31` }
 }
 
-/** Get current ISO week as "YYYY-Www" matching <input type="week">. */
 function currentIsoWeek(): string {
   const d = new Date()
   d.setHours(0, 0, 0, 0)
-  // Thursday in current week decides the year.
   d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
   const year = d.getFullYear()
   const week1 = new Date(year, 0, 4)
@@ -106,6 +107,9 @@ export default function TransactionsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [showJsonImport, setShowJsonImport] = useState(false)
+  const [showFixedExpense, setShowFixedExpense] = useState(false)
+  const [showInstallment, setShowInstallment] = useState(false)
 
   // Resolve the active date range from the selected period mode.
   const { startDate, endDate } = useMemo(() => {
@@ -148,9 +152,18 @@ export default function TransactionsPage() {
       }),
   })
 
+  // Balance query respects the period filter
+  const balanceParams = useMemo(() => {
+    if (startDate && endDate) {
+      return { start_date: startDate, end_date: endDate }
+    }
+    // Default: current month
+    return { year: now.getFullYear(), month: now.getMonth() + 1 }
+  }, [startDate, endDate])
+
   const { data: balance } = useQuery({
-    queryKey: ['balance', now.getFullYear(), now.getMonth() + 1],
-    queryFn: () => getBalance({ year: now.getFullYear(), month: now.getMonth() + 1 }),
+    queryKey: ['balance', balanceParams],
+    queryFn: () => getBalance(balanceParams),
   })
 
   const createMut = useMutation({
@@ -196,10 +209,21 @@ export default function TransactionsPage() {
   const editingTransaction = editingId ? data?.items.find((t) => t.id === editingId) : undefined
   const totalPages = data ? Math.ceil(data.total / data.per_page) : 0
 
-  // Summary cards (current month)
+  // Summary cards — now respect period filter
   const incomeMonth = Number(balance?.income_total ?? 0)
   const expenseMonth = Number(balance?.expense_total ?? 0)
   const monthResult = incomeMonth - expenseMonth
+
+  // Period label for cards
+  const periodLabel = useMemo(() => {
+    switch (periodMode) {
+      case 'week': return 'Semana'
+      case 'month': return 'Mês'
+      case 'year': return 'Ano'
+      case 'custom': return 'Período'
+      default: return 'Mês atual'
+    }
+  }, [periodMode])
 
   const exportCSV = () => {
     if (!data?.items.length) {
@@ -256,11 +280,32 @@ export default function TransactionsPage() {
             <span className="text-sm font-medium text-[#fafafa]">Importar Extrato</span>
           </button>
           <button
+            onClick={() => setShowJsonImport(true)}
+            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
+          >
+            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">data_object</span>
+            <span className="text-sm font-medium text-[#fafafa]">Importar JSON</span>
+          </button>
+          <button
             onClick={exportCSV}
             className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-[#a1a1aa] text-lg">download</span>
             <span className="text-sm font-medium text-[#fafafa]">Exportar</span>
+          </button>
+          <button
+            onClick={() => setShowFixedExpense(true)}
+            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
+          >
+            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">repeat</span>
+            <span className="text-sm font-medium text-[#fafafa]">Gasto Fixo</span>
+          </button>
+          <button
+            onClick={() => setShowInstallment(true)}
+            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
+          >
+            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">credit_card</span>
+            <span className="text-sm font-medium text-[#fafafa]">Parcelado</span>
           </button>
           <button
             onClick={() => {
@@ -285,23 +330,23 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
           </div>
           <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
-          <p className="text-xs text-[#52525b] mt-1">Acumulado</p>
+          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
             <span className="material-symbols-outlined text-[#34d399] text-base">trending_up</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Receitas do Mês</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Receitas</p>
           </div>
           <p className="text-2xl font-black text-[#34d399]">{fmt(incomeMonth)}</p>
-          <p className="text-xs text-[#52525b] mt-1">Mês atual</p>
+          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
             <span className="material-symbols-outlined text-[#ef4444] text-base">trending_down</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesas do Mês</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesas</p>
           </div>
           <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseMonth)}</p>
-          <p className="text-xs text-[#52525b] mt-1">Mês atual</p>
+          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -312,7 +357,7 @@ export default function TransactionsPage() {
             >
               {monthResult >= 0 ? 'savings' : 'warning'}
             </span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado do Mês</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado</p>
           </div>
           <p
             className={`text-2xl font-black ${
@@ -375,7 +420,6 @@ export default function TransactionsPage() {
           <option value="custom">Personalizado</option>
         </select>
 
-        {/* Period value input — depends on mode */}
         {periodMode === 'week' && (
           <input
             type="week"
@@ -438,7 +482,6 @@ export default function TransactionsPage() {
           </>
         )}
 
-        {/* Active range hint */}
         {periodMode !== 'all' && startDate && endDate && (
           <span className="text-[10px] uppercase tracking-widest text-[#52525b] hidden lg:inline">
             {fmtDate(startDate)} → {fmtDate(endDate)}
@@ -526,7 +569,7 @@ export default function TransactionsPage() {
         )}
       </section>
 
-      {/* Modal: New/Edit Transaction (reuses existing TransactionForm) */}
+      {/* Modal: New/Edit Transaction */}
       {showForm && (
         <TransactionForm
           categories={categories || []}
@@ -553,9 +596,30 @@ export default function TransactionsPage() {
 
       {/* Modal: Import Statement */}
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
+
+      {/* Modal: JSON Import */}
+      {showJsonImport && <JsonImportModal onClose={() => setShowJsonImport(false)} />}
+
+      {/* Modal: Fixed Expense */}
+      {showFixedExpense && (
+        <FixedExpenseModal
+          categories={categories || []}
+          onClose={() => setShowFixedExpense(false)}
+        />
+      )}
+
+      {/* Modal: Installment */}
+      {showInstallment && (
+        <InstallmentModal
+          categories={categories || []}
+          onClose={() => setShowInstallment(false)}
+        />
+      )}
     </div>
   )
 }
+
+// --- Transaction Row --------------------------------------------------------
 
 function TransactionRow({
   tx,
@@ -567,6 +631,8 @@ function TransactionRow({
   onDelete: () => void
 }) {
   const isAuto = tx.source === 'salary_auto'
+  const isFixed = tx.source?.startsWith('fixed_')
+  const isInstallment = tx.source?.startsWith('installment_')
   const isIncome = tx.type === 'income'
   return (
     <tr className="hover:bg-[#18181b]/50 transition-colors">
@@ -583,6 +649,22 @@ function TransactionRow({
               className="px-2 py-0.5 rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/30 text-[#a78bfa] text-[10px] font-bold uppercase tracking-wider"
             >
               auto
+            </span>
+          )}
+          {isFixed && (
+            <span
+              title="Gasto fixo mensal"
+              className="px-2 py-0.5 rounded-full bg-[#3b82f6]/15 border border-[#3b82f6]/30 text-[#3b82f6] text-[10px] font-bold uppercase tracking-wider"
+            >
+              fixo
+            </span>
+          )}
+          {isInstallment && (
+            <span
+              title="Compra parcelada"
+              className="px-2 py-0.5 rounded-full bg-[#f59e0b]/15 border border-[#f59e0b]/30 text-[#f59e0b] text-[10px] font-bold uppercase tracking-wider"
+            >
+              parcela
             </span>
           )}
         </div>
@@ -606,9 +688,9 @@ function TransactionRow({
       </td>
       <td className="px-6 py-4 text-right">
         <div className="flex justify-end gap-3">
-          {isAuto ? (
+          {isAuto || isFixed || isInstallment ? (
             <span
-              title="Transação automática — edite via tela de Rendimentos"
+              title="Transação automática — gerencie pelo cadastro original"
               className="text-[#52525b] cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-lg">lock</span>
@@ -637,7 +719,7 @@ function TransactionRow({
   )
 }
 
-// --- Import Modal ----------------------------------------------------------
+// --- Import Modal -----------------------------------------------------------
 
 function ImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -653,7 +735,6 @@ function ImportModal({ onClose }: { onClose: () => void }) {
     enabled: !!activeImportId,
   })
 
-  // We poll the import status until it's not "processing" anymore.
   const { data: activeImport } = useQuery({
     queryKey: ['import-status', activeImportId],
     queryFn: async () => {
@@ -741,7 +822,6 @@ function ImportModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Upload step */}
           {!activeImportId && (
             <div
               onDragOver={(e) => {
@@ -778,7 +858,6 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Process step */}
           {activeImport && status === 'pending' && (
             <div className="bg-[#09090b] border border-[#27272a] rounded-lg p-6 flex items-center justify-between">
               <div>
@@ -809,7 +888,6 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Review step */}
           {status === 'review' && staged && !confirmResult && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -832,7 +910,6 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {/* Confirm result */}
           {confirmResult && (
             <div className="bg-[#34d399]/5 border border-[#34d399]/20 rounded-lg p-6 text-center space-y-3">
               <span className="material-symbols-outlined text-[#34d399] text-5xl block">
@@ -861,6 +938,616 @@ function ImportModal({ onClose }: { onClose: () => void }) {
                 >
                   Fechar
                 </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- JSON Import Modal ------------------------------------------------------
+
+function JsonImportModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [jsonData, setJsonData] = useState<Record<string, unknown>[] | null>(null)
+  const [fileName, setFileName] = useState('')
+  const [error, setError] = useState('')
+  const [result, setResult] = useState<{ created: number; errors: string[] } | null>(null)
+
+  const importMut = useMutation({
+    mutationFn: importTransactionsJson,
+    onSuccess: (res) => {
+      setResult(res)
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+    },
+    onError: (err) => alert(`Erro na importação: ${extractError(err)}`),
+  })
+
+  const handleFile = (files: FileList | null) => {
+    if (!files?.length) return
+    const file = files[0]
+    setFileName(file.name)
+    setError('')
+    setResult(null)
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string)
+        const arr = Array.isArray(parsed) ? parsed : parsed.transactions ?? parsed.data ?? null
+        if (!Array.isArray(arr)) {
+          setError('O arquivo deve conter um array JSON ou um objeto com chave "transactions" ou "data".')
+          return
+        }
+        setJsonData(arr)
+      } catch {
+        setError('Arquivo JSON inválido.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const inputClass =
+    'bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-bold text-[#fafafa]">Importar JSON</h3>
+            <p className="text-xs text-[#a1a1aa]">
+              Formato esperado: array com objetos contendo date, description, amount, type (optional).
+            </p>
+          </div>
+          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+            close
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {!result && (
+            <>
+              <div className="flex gap-3 items-center">
+                <label className="inline-block bg-[#a78bfa] text-[#0a0012] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 cursor-pointer transition-colors">
+                  Escolher arquivo .json
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => handleFile(e.target.files)}
+                  />
+                </label>
+                {fileName && <span className="text-sm text-[#a1a1aa]">{fileName}</span>}
+              </div>
+
+              {error && (
+                <div className="bg-[#ef4444]/5 border border-[#ef4444]/20 rounded-lg p-4">
+                  <p className="text-sm text-[#ef4444]">{error}</p>
+                </div>
+              )}
+
+              {jsonData && (
+                <div className="space-y-4">
+                  <p className="text-sm text-[#a1a1aa]">{jsonData.length} transações encontradas no arquivo.</p>
+                  <div className="max-h-60 overflow-y-auto bg-[#09090b] border border-[#27272a] rounded-lg">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#121215] text-[#a1a1aa] uppercase text-[10px] tracking-widest sticky top-0">
+                        <tr>
+                          <th className="px-4 py-2">Data</th>
+                          <th className="px-4 py-2">Descrição</th>
+                          <th className="px-4 py-2 text-right">Valor</th>
+                          <th className="px-4 py-2">Tipo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#27272a]">
+                        {jsonData.slice(0, 50).map((row, i) => (
+                          <tr key={i}>
+                            <td className="px-4 py-2 text-[#fafafa]">{String(row.date ?? '')}</td>
+                            <td className="px-4 py-2 text-[#fafafa]">{String(row.description ?? '')}</td>
+                            <td className="px-4 py-2 text-right text-[#fafafa]">{String(row.amount ?? '')}</td>
+                            <td className="px-4 py-2 text-[#a1a1aa]">{String(row.type ?? 'expense')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {jsonData.length > 50 && (
+                      <p className="text-center text-xs text-[#52525b] py-2">
+                        …e mais {jsonData.length - 50} linhas
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => importMut.mutate(jsonData)}
+                    disabled={importMut.isPending}
+                    className="bg-[#34d399] text-[#001a12] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#34d399]/90 disabled:opacity-50 transition-colors"
+                  >
+                    {importMut.isPending ? 'Importando…' : `Importar ${jsonData.length} transações`}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {result && (
+            <div className="bg-[#34d399]/5 border border-[#34d399]/20 rounded-lg p-6 text-center space-y-3">
+              <span className="material-symbols-outlined text-[#34d399] text-5xl block">
+                check_circle
+              </span>
+              <p className="text-[#fafafa] font-bold text-lg">Importação concluída</p>
+              <p className="text-sm text-[#a1a1aa]">{result.created} transações importadas.</p>
+              {result.errors.length > 0 && (
+                <div className="text-left bg-[#ef4444]/5 border border-[#ef4444]/20 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-[#ef4444] font-medium mb-1">Erros:</p>
+                  {result.errors.map((e, i) => (
+                    <p key={i} className="text-xs text-[#a1a1aa]">{e}</p>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-[#a78bfa] text-[#0a0012] rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 mt-2"
+              >
+                Fechar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Fixed Expense Modal ----------------------------------------------------
+
+function FixedExpenseModal({
+  categories,
+  onClose,
+}: {
+  categories: { id: number; name: string; type: string; icon: string | null }[]
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [description, setDescription] = useState('')
+  const [amount, setAmount] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [dayOfMonth, setDayOfMonth] = useState('1')
+  const [isPermanent, setIsPermanent] = useState(true)
+  const now = new Date()
+  const [startDate, setStartDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`)
+  const [endDate, setEndDate] = useState('')
+
+  const { data: fixedExpenses } = useQuery({
+    queryKey: ['fixed-expenses'],
+    queryFn: getFixedExpenses,
+  })
+
+  const createMut = useMutation({
+    mutationFn: createFixedExpense,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+      setDescription('')
+      setAmount('')
+      setCategoryId('')
+    },
+    onError: (err) => alert(`Erro: ${extractError(err)}`),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: deleteFixedExpense,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+    },
+    onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const data: FixedExpenseCreate = {
+      description,
+      amount: parseFloat(amount),
+      category_id: categoryId ? Number(categoryId) : null,
+      day_of_month: Number(dayOfMonth),
+      is_permanent: isPermanent,
+      start_date: startDate,
+      end_date: isPermanent ? null : endDate || null,
+    }
+    createMut.mutate(data)
+  }
+
+  const expenseCategories = categories.filter((c) => c.type === 'expense')
+  const inputClass =
+    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-bold text-[#fafafa]">Gastos Fixos Mensais</h3>
+            <p className="text-xs text-[#a1a1aa]">
+              Cadastre despesas que se repetem todo mês. Elas aparecerão automaticamente nas transações.
+            </p>
+          </div>
+          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+            close
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Create form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Descrição</label>
+                <input
+                  type="text"
+                  required
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className={inputClass}
+                  placeholder="Ex: Aluguel"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Valor (R$)</label>
+                <input
+                  type="number"
+                  required
+                  step="0.01"
+                  min="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className={inputClass}
+                  placeholder="0,00"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Categoria</label>
+                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+                  <option value="">Sem categoria</option>
+                  {expenseCategories.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-[#09090b]">
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Dia do mês</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={dayOfMonth}
+                  onChange={(e) => setDayOfMonth(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Início</label>
+                <input
+                  type="date"
+                  required
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Tipo de duração</label>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsPermanent(true)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isPermanent
+                        ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
+                        : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
+                    }`}
+                  >
+                    Permanente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPermanent(false)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      !isPermanent
+                        ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
+                        : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
+                    }`}
+                  >
+                    Com prazo
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {!isPermanent && (
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Data final</label>
+                <input
+                  type="date"
+                  required={!isPermanent}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={createMut.isPending}
+              className="w-full bg-[#a78bfa] text-[#0a0012] py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 disabled:opacity-50 transition-colors"
+            >
+              {createMut.isPending ? 'Cadastrando…' : 'Cadastrar Gasto Fixo'}
+            </button>
+          </form>
+
+          {/* List existing */}
+          {fixedExpenses && fixedExpenses.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold text-[#a1a1aa] uppercase tracking-widest">Gastos fixos cadastrados</h4>
+              <div className="space-y-2">
+                {fixedExpenses.map((fe) => (
+                  <div
+                    key={fe.id}
+                    className="flex items-center justify-between bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm text-[#fafafa] font-medium">{fe.description}</p>
+                      <p className="text-xs text-[#a1a1aa]">
+                        {fmt(fe.amount)} • Dia {fe.day_of_month} •{' '}
+                        {fe.is_permanent ? 'Permanente' : `Até ${fmtDate(fe.end_date!)}`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (confirm('Excluir este gasto fixo e todas as transações geradas?'))
+                          deleteMut.mutate(fe.id)
+                      }}
+                      className="text-[#a1a1aa] hover:text-[#ef4444] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Installment Modal ------------------------------------------------------
+
+function InstallmentModal({
+  categories,
+  onClose,
+}: {
+  categories: { id: number; name: string; type: string; icon: string | null }[]
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [description, setDescription] = useState('')
+  const [totalAmount, setTotalAmount] = useState('')
+  const [installmentCount, setInstallmentCount] = useState('2')
+  const [categoryId, setCategoryId] = useState('')
+  const now = new Date()
+  const [startDate, setStartDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`)
+
+  const { data: installments } = useQuery({
+    queryKey: ['installments'],
+    queryFn: getInstallments,
+  })
+
+  const createMut = useMutation({
+    mutationFn: createInstallment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['installments'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+      setDescription('')
+      setTotalAmount('')
+      setInstallmentCount('2')
+    },
+    onError: (err) => alert(`Erro: ${extractError(err)}`),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: deleteInstallment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['installments'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+    },
+    onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const data: InstallmentPurchaseCreate = {
+      description,
+      total_amount: parseFloat(totalAmount),
+      installment_count: Number(installmentCount),
+      category_id: categoryId ? Number(categoryId) : null,
+      start_date: startDate,
+    }
+    createMut.mutate(data)
+  }
+
+  const installmentPreview = totalAmount && installmentCount
+    ? (parseFloat(totalAmount) / Number(installmentCount)).toFixed(2)
+    : null
+
+  const expenseCategories = categories.filter((c) => c.type === 'expense')
+  const inputClass =
+    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-bold text-[#fafafa]">Compra Parcelada</h3>
+            <p className="text-xs text-[#a1a1aa]">
+              Cadastre uma compra parcelada. As parcelas serão criadas automaticamente como transações.
+            </p>
+          </div>
+          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+            close
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs text-[#a1a1aa] mb-1">Descrição do produto</label>
+              <input
+                type="text"
+                required
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className={inputClass}
+                placeholder="Ex: iPhone 15"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Valor total (R$)</label>
+                <input
+                  type="number"
+                  required
+                  step="0.01"
+                  min="0.01"
+                  value={totalAmount}
+                  onChange={(e) => setTotalAmount(e.target.value)}
+                  className={inputClass}
+                  placeholder="0,00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Número de parcelas</label>
+                <input
+                  type="number"
+                  required
+                  min="2"
+                  max="120"
+                  value={installmentCount}
+                  onChange={(e) => setInstallmentCount(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            {installmentPreview && (
+              <div className="bg-[#a78bfa]/5 border border-[#a78bfa]/20 rounded-lg p-3 flex items-center gap-3">
+                <span className="material-symbols-outlined text-[#a78bfa] text-xl">info</span>
+                <p className="text-sm text-[#a1a1aa]">
+                  Valor por parcela: <span className="text-[#fafafa] font-bold">{fmt(Number(installmentPreview))}</span>
+                  {' '}× {installmentCount}x
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Categoria</label>
+                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+                  <option value="">Sem categoria</option>
+                  {expenseCategories.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-[#09090b]">
+                      {c.icon} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#a1a1aa] mb-1">Data da primeira parcela</label>
+                <input
+                  type="date"
+                  required
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={createMut.isPending}
+              className="w-full bg-[#a78bfa] text-[#0a0012] py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 disabled:opacity-50 transition-colors"
+            >
+              {createMut.isPending ? 'Cadastrando…' : 'Cadastrar Parcelamento'}
+            </button>
+          </form>
+
+          {/* List existing */}
+          {installments && installments.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold text-[#a1a1aa] uppercase tracking-widest">Parcelamentos cadastrados</h4>
+              <div className="space-y-2">
+                {installments.map((ip) => (
+                  <div
+                    key={ip.id}
+                    className="flex items-center justify-between bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm text-[#fafafa] font-medium">{ip.description}</p>
+                      <p className="text-xs text-[#a1a1aa]">
+                        Total: {fmt(ip.total_amount)} • {ip.installment_count}x de{' '}
+                        {fmt(ip.total_amount / ip.installment_count)} • Início: {fmtDate(ip.start_date)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (confirm('Excluir este parcelamento e todas as parcelas geradas?'))
+                          deleteMut.mutate(ip.id)
+                      }}
+                      className="text-[#a1a1aa] hover:text-[#ef4444] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}

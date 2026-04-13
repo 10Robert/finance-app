@@ -25,6 +25,10 @@ import type {
   ChartMonth,
   CategoryProgress,
   TransactionsGrouped,
+  FixedExpense,
+  FixedExpenseCreate,
+  InstallmentPurchase,
+  InstallmentPurchaseCreate,
 } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
@@ -87,7 +91,7 @@ export const confirmImport = (id: number) =>
     .then((r) => r.data)
 
 // Dashboard - New endpoints
-export const getBalance = (params: { year: number; month?: number }) =>
+export const getBalance = (params: { year?: number; month?: number; start_date?: string; end_date?: string }) =>
   api.get<BalanceData>('/dashboard/balance', { params }).then((r) => r.data)
 
 export const getMonthlyRevenue = (params: { year: number; month?: number }) =>
@@ -188,3 +192,27 @@ export const getCategoryProgress = (params?: { year?: number; month?: number }) 
 
 export const getTransactionsGrouped = (params?: { year?: number; month?: number }) =>
   api.get<TransactionsGrouped>('/dashboard/transactions-grouped', { params }).then((r) => r.data)
+
+// Fixed Expenses
+export const getFixedExpenses = () =>
+  api.get<FixedExpense[]>('/fixed-expenses/').then((r) => r.data)
+
+export const createFixedExpense = (data: FixedExpenseCreate) =>
+  api.post<FixedExpense>('/fixed-expenses/', data).then((r) => r.data)
+
+export const deleteFixedExpense = (id: number) =>
+  api.delete(`/fixed-expenses/${id}`)
+
+// Installment Purchases
+export const getInstallments = () =>
+  api.get<InstallmentPurchase[]>('/installments/').then((r) => r.data)
+
+export const createInstallment = (data: InstallmentPurchaseCreate) =>
+  api.post<InstallmentPurchase>('/installments/', data).then((r) => r.data)
+
+export const deleteInstallment = (id: number) =>
+  api.delete(`/installments/${id}`)
+
+// JSON Import
+export const importTransactionsJson = (transactions: Record<string, unknown>[]) =>
+  api.post<{ created: number; errors: string[] }>('/transactions/import-json', { transactions }).then((r) => r.data)

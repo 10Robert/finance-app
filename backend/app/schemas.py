@@ -323,6 +323,57 @@ class TransactionGroupedOut(BaseModel):
     recurring: list[TransactionOut]
 
 
+# --- Fixed Expenses ---
+class FixedExpenseCreate(BaseModel):
+    description: str
+    amount: Decimal
+    category_id: Optional[int] = None
+    day_of_month: int = 1
+    is_permanent: bool = True
+    start_date: Date
+    end_date: Optional[Date] = None
+    icon: str = "repeat"
+
+
+class FixedExpenseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    description: str
+    amount: Decimal
+    category_id: Optional[int]
+    category: Optional[CategoryOut]
+    day_of_month: int
+    is_permanent: bool
+    start_date: Date
+    end_date: Optional[Date]
+    active: bool
+    icon: str
+    created_at: DateTime
+
+
+# --- Installment Purchases ---
+class InstallmentPurchaseCreate(BaseModel):
+    description: str
+    total_amount: Decimal
+    installment_count: int
+    category_id: Optional[int] = None
+    start_date: Date
+    icon: str = "credit_card"
+
+
+class InstallmentPurchaseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    description: str
+    total_amount: Decimal
+    installment_count: int
+    category_id: Optional[int]
+    category: Optional[CategoryOut]
+    start_date: Date
+    icon: str
+    created_at: DateTime
+
+
 # --- Monthly Entries (overtime / refund / late / absence launches) ---
 class MonthlyEntryCreate(BaseModel):
     reference_month: int

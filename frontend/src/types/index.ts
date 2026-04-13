@@ -209,6 +209,55 @@ export interface TransactionsGrouped {
   recurring: Transaction[]
 }
 
+// Fixed Expenses
+export interface FixedExpense {
+  id: number
+  description: string
+  amount: number
+  category_id: number | null
+  category: Category | null
+  day_of_month: number
+  is_permanent: boolean
+  start_date: string
+  end_date: string | null
+  active: boolean
+  icon: string
+  created_at: string
+}
+
+export interface FixedExpenseCreate {
+  description: string
+  amount: number
+  category_id?: number | null
+  day_of_month?: number
+  is_permanent?: boolean
+  start_date: string
+  end_date?: string | null
+  icon?: string
+}
+
+// Installment Purchases
+export interface InstallmentPurchase {
+  id: number
+  description: string
+  total_amount: number
+  installment_count: number
+  category_id: number | null
+  category: Category | null
+  start_date: string
+  icon: string
+  created_at: string
+}
+
+export interface InstallmentPurchaseCreate {
+  description: string
+  total_amount: number
+  installment_count: number
+  category_id?: number | null
+  start_date: string
+  icon?: string
+}
+
 // Monthly Entries (overtime / refund / late / absence launches)
 export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence'
 
