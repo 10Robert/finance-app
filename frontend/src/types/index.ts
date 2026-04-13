@@ -209,6 +209,23 @@ export interface TransactionsGrouped {
   recurring: Transaction[]
 }
 
+// Expenses Chart (stacked bar)
+export interface ExpensesChartBar {
+  label: string
+  income: number
+  expenses: number
+  net: number
+  accumulated: number
+}
+
+export interface ExpensesChartData {
+  mode: 'annual' | 'monthly' | 'weekly'
+  bars: ExpensesChartBar[]
+  total_expenses: number
+  monthly_average: number
+  highest_label: string
+}
+
 // Fixed Expenses
 export interface FixedExpense {
   id: number

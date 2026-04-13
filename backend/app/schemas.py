@@ -160,6 +160,23 @@ class MonthlyTrend(BaseModel):
     net: Decimal
 
 
+# --- Expenses Chart (stacked bar) ---
+class ExpensesChartBar(BaseModel):
+    label: str
+    income: Decimal
+    expenses: Decimal
+    net: Decimal
+    accumulated: Decimal
+
+
+class ExpensesChartOut(BaseModel):
+    mode: str  # "annual", "monthly", "weekly"
+    bars: list[ExpensesChartBar]
+    total_expenses: Decimal
+    monthly_average: Decimal
+    highest_label: str  # label of the bar with highest expense
+
+
 # --- Salary ---
 class DiscountCreate(BaseModel):
     name: str

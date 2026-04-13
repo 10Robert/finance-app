@@ -29,6 +29,7 @@ import type {
   FixedExpenseCreate,
   InstallmentPurchase,
   InstallmentPurchaseCreate,
+  ExpensesChartData,
 } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
@@ -190,8 +191,20 @@ export const getChart6Months = () =>
 export const getCategoryProgress = (params?: { year?: number; month?: number }) =>
   api.get<CategoryProgress[]>('/dashboard/category-progress', { params }).then((r) => r.data)
 
-export const getTransactionsGrouped = (params?: { year?: number; month?: number }) =>
+export const getTransactionsGrouped = (params?: { year?: number; month?: number; start_date?: string; end_date?: string }) =>
   api.get<TransactionsGrouped>('/dashboard/transactions-grouped', { params }).then((r) => r.data)
+
+// Expenses chart (stacked bar)
+export const getExpensesChart = (params: { mode?: string; year?: number; month?: number; week_start?: string }) =>
+  api.get<ExpensesChartData>('/dashboard/expenses-chart', { params }).then((r) => r.data)
+
+// Category transactions drill-down
+export const getCategoryTransactions = (params: { category_name: string; start_date?: string; end_date?: string; year?: number; month?: number }) =>
+  api.get<Transaction[]>('/dashboard/category-transactions', { params }).then((r) => r.data)
+
+// Top categories with date range support
+export const getTopCategoriesRange = (params: { start_date?: string; end_date?: string; year?: number; month?: number; limit?: number }) =>
+  api.get<SpendingByCategory[]>('/dashboard/top-categories', { params }).then((r) => r.data)
 
 // Fixed Expenses
 export const getFixedExpenses = () =>
