@@ -76,8 +76,9 @@ async def update_transaction(transaction_id: int, data: TransactionUpdate, db: A
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(transaction, key, value)
     await db.commit()
-    await db.refresh(transaction, ["category"])
-    return transaction
+    query = select(Transaction).options(selectinload(Transaction.category)).where(Transaction.id == transaction_id)
+    result = await db.execute(query)
+    return result.scalar_one()
 
 
 @router.delete("/{transaction_id}", status_code=204)
