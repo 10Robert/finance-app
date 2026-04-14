@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getSalaryConfig,
+  getMonthlySalaryConfig,
+  updateMonthlySalaryConfig,
   saveSalaryConfig,
   getMonthlyEntries,
   getMonthlySummary,
@@ -73,6 +75,7 @@ export default function SalaryPage() {
   const [cfgVtEnabled, setCfgVtEnabled] = useState(false)
   const [cfgVtPercent, setCfgVtPercent] = useState('6')
   const [cfgFgts, setCfgFgts] = useState('')
+  const [monthBaseSalary, setMonthBaseSalary] = useState('')
 
   // Edit modal
   const [editing, setEditing] = useState<MonthlyEntry | null>(null)
@@ -93,6 +96,12 @@ export default function SalaryPage() {
   const { data: summary } = useQuery({
     queryKey: ['monthly-summary', selectedMonth, selectedYear],
     queryFn: () => getMonthlySummary({ month: selectedMonth, year: selectedYear }),
+    enabled: !!config,
+  })
+
+  const { data: monthlySalaryConfig } = useQuery({
+    queryKey: ['salary-monthly-config', selectedMonth, selectedYear],
+    queryFn: () => getMonthlySalaryConfig({ month: selectedMonth, year: selectedYear }),
     enabled: !!config,
   })
 
@@ -133,9 +142,15 @@ export default function SalaryPage() {
     [monthExpenses],
   )
 
+  useEffect(() => {
+    if (monthlySalaryConfig) {
+      setMonthBaseSalary(String(monthlySalaryConfig.base_salary ?? ''))
+    }
+  }, [monthlySalaryConfig])
+
   const netSalary = Number(summary?.net_salary ?? 0)
   const monthlyResult = netSalary - expenseTotal
-  const fgtsMonthlyDeposit = Number(config?.base_salary ?? 0) * 0.08
+  const fgtsMonthlyDeposit = Number(summary?.base_salary_contractual ?? monthlySalaryConfig?.base_salary ?? config?.base_salary ?? 0) * 0.08
 
   const openConfigModal = () => {
     if (config) {
@@ -179,7 +194,18 @@ export default function SalaryPage() {
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['monthly-entries', selectedMonth, selectedYear] })
     qc.invalidateQueries({ queryKey: ['monthly-summary', selectedMonth, selectedYear] })
+    qc.invalidateQueries({ queryKey: ['salary-monthly-config', selectedMonth, selectedYear] })
   }
+
+  const saveMonthlyBaseMut = useMutation({
+    mutationFn: () =>
+      updateMonthlySalaryConfig(
+        { month: selectedMonth, year: selectedYear },
+        { base_salary: parseFloat(monthBaseSalary) || 0 },
+      ),
+    onSuccess: invalidateAll,
+    onError: (err) => alert(`Erro ao salvar salário do mês: ${extractError(err)}`),
+  })
 
   const createMut = useMutation({
     mutationFn: createMonthlyEntry,
@@ -547,13 +573,42 @@ export default function SalaryPage() {
               <div className="text-sm text-[#a1a1aa] text-center py-6">
                 Configure seu salário para ver o resumo.
               </div>
-            ) : !summary ? (
+            ) : !summary || !monthlySalaryConfig ? (
               <div className="text-sm text-[#a1a1aa] text-center py-6">Carregando…</div>
             ) : (
               <>
-                <div className="flex justify-between items-center pb-4 border-b border-[#27272a]">
-                  <span className="text-sm text-[#a1a1aa]">Salário Base</span>
-                  <span className="text-sm font-bold text-[#fafafa]">{fmt(Number(summary.base_salary))}</span>
+                <div className="space-y-3 pb-4 border-b border-[#27272a]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#a1a1aa]">Salário Base Contratual</span>
+                    <span className="text-sm font-bold text-[#fafafa]">{fmt(Number(summary.base_salary_contractual))}</span>
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Salário base deste mês</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={monthBaseSalary}
+                        onChange={(e) => setMonthBaseSalary(e.target.value)}
+                        className={inputClass}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => saveMonthlyBaseMut.mutate()}
+                        disabled={saveMonthlyBaseMut.isPending}
+                        className="px-4 py-2 bg-[#a78bfa] hover:bg-[#a78bfa]/90 text-[#0a0012] font-bold rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {saveMonthlyBaseMut.isPending ? 'Salvando' : 'Salvar'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[#52525b] mt-1">
+                      Ajusta apenas {MONTHS[selectedMonth - 1]}/{selectedYear}. A configuração global permanece intacta.
+                    </p>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#a1a1aa]">Salário Devido no Mês</span>
+                    <span className="text-sm font-bold text-[#fafafa]">{fmt(Number(summary.base_salary_due))}</span>
+                  </div>
                 </div>
 
                 <div className="space-y-3">

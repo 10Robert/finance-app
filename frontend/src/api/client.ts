@@ -13,6 +13,7 @@ import type {
   MonthlyTrend,
   RecentTransaction,
   SalaryConfig,
+  MonthlySalaryConfig,
   SalaryCalculation,
   DiscountData,
   OvertimeEntryData,
@@ -139,6 +140,14 @@ export const updateSalaryConfig = (data: {
   transport_voucher_percent?: number
   fgts_balance?: number
 }) => api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
+
+export const getMonthlySalaryConfig = (params: { month: number; year: number }) =>
+  api.get<MonthlySalaryConfig>('/salary/monthly-config', { params }).then((r) => r.data)
+
+export const updateMonthlySalaryConfig = (
+  params: { month: number; year: number },
+  data: { base_salary: number }
+) => api.put<MonthlySalaryConfig>('/salary/monthly-config', data, { params }).then((r) => r.data)
 
 export const addDiscount = (data: { name: string; type: string; value: number }) =>
   api.post<DiscountData>('/salary/discounts', data).then((r) => r.data)

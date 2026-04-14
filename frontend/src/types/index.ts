@@ -141,6 +141,22 @@ export interface SalaryConfig {
   updated_at: string
 }
 
+export interface MonthlySalaryConfig {
+  id: number
+  reference_month: number
+  reference_year: number
+  base_salary: number
+  overtime_hour_rate: number
+  meal_allowance: number
+  health_plan_deduction: number
+  dental_plan_deduction: number
+  transport_voucher_enabled: boolean
+  transport_voucher_percent: number
+  fgts_balance: number
+  created_at: string
+  updated_at: string
+}
+
 export interface SalaryCalculation {
   base_salary: number
   overtime_total: number
@@ -316,7 +332,8 @@ export interface MonthlyEntryUpdate {
 export interface MonthlySummary {
   reference_month: number
   reference_year: number
-  base_salary: number
+  base_salary_contractual: number
+  base_salary_due: number
   meal_allowance: number
   overtime_hours_total: number
   overtime_value: number

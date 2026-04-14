@@ -3,50 +3,33 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import MonthlyEntry, SalaryConfig
-from app.schemas import (
-    MonthlyEntryCreate,
-    MonthlyEntryUpdate,
-    MonthlyEntryOut,
-    MonthlySummaryOut,
-)
-from app.services.salary_sync import compute_monthly_summary, sync_salary_transaction
+from app.models import MonthlyEntry
+from app.schemas import MonthlyEntryCreate, MonthlyEntryOut, MonthlyEntryUpdate, MonthlySummaryOut
+from app.services.salary_sync import compute_monthly_summary, ensure_monthly_salary_snapshot, sync_salary_transaction
 
 router = APIRouter()
 
 
-async def _get_salary_config(db: AsyncSession) -> SalaryConfig | None:
-    result = await db.execute(
-        select(SalaryConfig)
-        .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-        .order_by(SalaryConfig.id.desc())
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
-
-
 def _validate_payload(data: MonthlyEntryCreate) -> None:
-    """Ensure the right fields are present for the entry type."""
-    t = data.entry_type
-    if t == "overtime":
+    entry_type = data.entry_type
+    if entry_type == "overtime":
         if data.hours is None or data.hours <= 0:
             raise HTTPException(422, "Horas extras requer 'hours' > 0")
         if data.overtime_multiplier is None:
             raise HTTPException(422, "Horas extras requer 'overtime_multiplier'")
-    elif t == "refund":
+    elif entry_type == "refund":
         if data.amount is None or data.amount <= 0:
             raise HTTPException(422, "Reembolso requer 'amount' > 0")
-    elif t == "late":
+    elif entry_type == "late":
         if data.hours is None or data.hours <= 0:
             raise HTTPException(422, "Atraso requer 'hours' > 0")
-    elif t == "absence":
+    elif entry_type == "absence":
         if data.days is None or data.days <= 0:
             raise HTTPException(422, "Falta requer 'days' > 0")
     else:
-        raise HTTPException(422, f"entry_type inválido: {t}")
+        raise HTTPException(422, f"entry_type inválido: {entry_type}")
 
 
 @router.get("/", response_model=list[MonthlyEntryOut])
@@ -114,8 +97,8 @@ async def month_summary(
     year: int = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
-    config = await _get_salary_config(db)
-    if not config:
+    snapshot = await ensure_monthly_salary_snapshot(db, month, year)
+    if not snapshot:
         raise HTTPException(404, "Salary config não encontrada. Configure seu salário primeiro.")
 
     result = await db.execute(
@@ -125,4 +108,4 @@ async def month_summary(
         )
     )
     entries = result.scalars().all()
-    return compute_monthly_summary(config, entries, month, year)
+    return compute_monthly_summary(snapshot, entries, month, year)

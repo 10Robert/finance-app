@@ -7,18 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import SalaryConfig, Discount, OvertimeEntry
+from app.models import SalaryConfig, Discount, OvertimeEntry, MonthlySalarySnapshot
 from app.schemas import (
     SalaryConfigCreate,
     SalaryConfigUpdate,
     SalaryConfigOut,
+    MonthlySalaryConfigOut,
+    MonthlySalaryConfigUpdate,
     DiscountCreate,
     DiscountOut,
     OvertimeEntryCreate,
     OvertimeEntryOut,
     SalaryCalculationOut,
 )
-from app.services.salary_sync import sync_salary_transaction
+from app.services.salary_sync import ensure_monthly_salary_snapshot, sync_salary_transaction
 
 router = APIRouter()
 
@@ -34,6 +36,13 @@ async def get_or_404(db: AsyncSession) -> SalaryConfig:
     if not config:
         raise HTTPException(status_code=404, detail="Salary config not found")
     return config
+
+
+async def get_monthly_snapshot_or_404(db: AsyncSession, month: int, year: int) -> MonthlySalarySnapshot:
+    snapshot = await ensure_monthly_salary_snapshot(db, month, year)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Salary config not found")
+    return snapshot
 
 
 # --- Salary Config ---
@@ -124,6 +133,30 @@ async def update_salary_config(data: SalaryConfigUpdate, db: AsyncSession = Depe
     today = DateCls.today()
     await sync_salary_transaction(db, today.month, today.year)
     return out
+
+
+@router.get("/monthly-config", response_model=MonthlySalaryConfigOut)
+async def get_monthly_salary_config(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_monthly_snapshot_or_404(db, month, year)
+
+
+@router.put("/monthly-config", response_model=MonthlySalaryConfigOut)
+async def update_monthly_salary_config(
+    data: MonthlySalaryConfigUpdate,
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    snapshot = await get_monthly_snapshot_or_404(db, month, year)
+    snapshot.base_salary = data.base_salary
+    await db.commit()
+    await db.refresh(snapshot)
+    await sync_salary_transaction(db, month, year)
+    return snapshot
 
 
 # --- Discounts ---

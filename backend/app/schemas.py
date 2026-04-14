@@ -251,6 +251,27 @@ class SalaryConfigOut(BaseModel):
     updated_at: DateTime
 
 
+class MonthlySalaryConfigOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    reference_month: int
+    reference_year: int
+    base_salary: Decimal
+    overtime_hour_rate: Decimal
+    meal_allowance: Decimal = Decimal("0")
+    health_plan_deduction: Decimal = Decimal("0")
+    dental_plan_deduction: Decimal = Decimal("0")
+    transport_voucher_enabled: bool = False
+    transport_voucher_percent: Decimal = Decimal("6.00")
+    fgts_balance: Decimal = Decimal("0")
+    created_at: DateTime
+    updated_at: DateTime
+
+
+class MonthlySalaryConfigUpdate(BaseModel):
+    base_salary: Decimal
+
+
 class SalaryCalculationOut(BaseModel):
     base_salary: Decimal
     overtime_total: Decimal
@@ -431,7 +452,8 @@ class MonthlyEntryOut(BaseModel):
 class MonthlySummaryOut(BaseModel):
     reference_month: int
     reference_year: int
-    base_salary: Decimal
+    base_salary_contractual: Decimal
+    base_salary_due: Decimal
     meal_allowance: Decimal
     overtime_hours_total: Decimal
     overtime_value: Decimal
