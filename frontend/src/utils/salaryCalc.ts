@@ -1,12 +1,14 @@
 // Client-side salary calculator (mirrors backend logic for real-time preview)
 
+// INSS 2026 — teto R$ 8.475,55
 const INSS_BRACKETS = [
-  { limit: 1412.00, rate: 0.075 },
-  { limit: 2666.68, rate: 0.09 },
-  { limit: 4000.03, rate: 0.12 },
-  { limit: 7786.02, rate: 0.14 },
+  { limit: 1621.00, rate: 0.075 },
+  { limit: 2902.84, rate: 0.09 },
+  { limit: 4354.27, rate: 0.12 },
+  { limit: 8475.55, rate: 0.14 },
 ]
 
+// IRRF 2026
 const IRRF_BRACKETS = [
   { limit: 2259.20, rate: 0, deduction: 0 },
   { limit: 2826.65, rate: 0.075, deduction: 169.44 },

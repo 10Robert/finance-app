@@ -41,11 +41,13 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
             for i, llm_row in enumerate(llm_results):
                 original_row = parsed_rows[llm_row.get("index", i)] if llm_row.get("index", i) < len(parsed_rows) else None
 
+                raw_amount = _parse_amount(original_row["amount"] if original_row else str(llm_row.get("amount", 0)))
                 staged = StagedTransaction(
                     bank_import_id=bank_import_id,
                     date=_parse_date(original_row["date"] if original_row else llm_row.get("date", "")),
                     description=llm_row.get("cleaned_description", original_row["description"] if original_row else ""),
-                    amount=_parse_amount(original_row["amount"] if original_row else str(llm_row.get("amount", 0))),
+                    # Always store amounts as positive — direction is encoded in `type`
+                    amount=abs(raw_amount),
                     type=llm_row.get("type", "expense"),
                     category_id=category_map.get(llm_row.get("category", "")),
                     confidence=Decimal(str(llm_row.get("confidence", 0))),
@@ -59,11 +61,13 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
             llm_results = await llm_service.extract_and_categorize_pdf(pdf_text, categories)
 
             for llm_row in llm_results:
+                raw_amount = _parse_amount(str(llm_row.get("amount", 0)))
                 staged = StagedTransaction(
                     bank_import_id=bank_import_id,
                     date=_parse_date(llm_row.get("date", "")),
                     description=llm_row.get("cleaned_description", llm_row.get("description", "")),
-                    amount=_parse_amount(str(llm_row.get("amount", 0))),
+                    # Always store amounts as positive — direction is encoded in `type`
+                    amount=abs(raw_amount),
                     type=llm_row.get("type", "expense"),
                     category_id=category_map.get(llm_row.get("category", "")),
                     confidence=Decimal(str(llm_row.get("confidence", 0))),
@@ -84,8 +88,12 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
         raise
 
 
-async def confirm_import(bank_import_id: int, db: AsyncSession) -> int:
-    """Move accepted staged transactions into the transactions table."""
+async def confirm_import(bank_import_id: int, db: AsyncSession) -> dict:
+    """Move accepted staged transactions into the transactions table.
+
+    Income entries (salaries, refunds) are skipped intentionally — those are
+    managed exclusively from the Rendimentos screen, not from bank statements.
+    """
     result = await db.execute(
         select(StagedTransaction).where(
             StagedTransaction.bank_import_id == bank_import_id,
@@ -94,7 +102,12 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> int:
     )
     staged_rows = result.scalars().all()
 
+    created = 0
+    skipped_income = 0
     for staged in staged_rows:
+        if staged.type == "income":
+            skipped_income += 1
+            continue
         transaction = Transaction(
             date=staged.date,
             description=staged.description,
@@ -104,11 +117,12 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> int:
             bank_import_id=bank_import_id,
         )
         db.add(transaction)
+        created += 1
 
     bank_import = await db.get(BankImport, bank_import_id)
     bank_import.status = "completed"
     await db.commit()
-    return len(staged_rows)
+    return {"created": created, "skipped_income": skipped_income}
 
 
 def _parse_date(value: str) -> date:

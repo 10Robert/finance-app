@@ -86,7 +86,11 @@ async def update_staged(import_id: int, data: StagedBatchUpdate, db: AsyncSessio
 @router.post("/{import_id}/confirm")
 async def confirm_import(import_id: int, db: AsyncSession = Depends(get_db)):
     try:
-        count = await import_service.confirm_import(import_id, db)
-        return {"message": f"Confirmed {count} transactions", "count": count}
+        result = await import_service.confirm_import(import_id, db)
+        return {
+            "message": f"Confirmed {result['created']} transactions",
+            "created": result["created"],
+            "skipped_income": result["skipped_income"],
+        }
     except Exception as e:
         raise HTTPException(500, f"Confirmation failed: {str(e)}")

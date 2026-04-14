@@ -2,15 +2,15 @@ from decimal import Decimal, ROUND_HALF_UP
 
 TWO_PLACES = Decimal("0.01")
 
-# INSS Progressive Brackets (2024)
+# INSS Progressive Brackets (2026) — teto R$ 8.475,55
 INSS_BRACKETS = [
-    (Decimal("1412.00"), Decimal("0.075")),
-    (Decimal("2666.68"), Decimal("0.09")),
-    (Decimal("4000.03"), Decimal("0.12")),
-    (Decimal("7786.02"), Decimal("0.14")),
+    (Decimal("1621.00"), Decimal("0.075")),
+    (Decimal("2902.84"), Decimal("0.09")),
+    (Decimal("4354.27"), Decimal("0.12")),
+    (Decimal("8475.55"), Decimal("0.14")),
 ]
 
-# IRRF Simplified Brackets (2024) - applied after INSS deduction
+# IRRF Simplified Brackets (2026) - applied after INSS deduction
 IRRF_BRACKETS = [
     (Decimal("2259.20"), Decimal("0"), Decimal("0")),
     (Decimal("2826.65"), Decimal("0.075"), Decimal("169.44")),

@@ -1,6 +1,9 @@
 from datetime import date
+from decimal import Decimal, InvalidOperation
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -84,3 +87,49 @@ async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get
         raise HTTPException(404, "Transaction not found")
     await db.delete(transaction)
     await db.commit()
+
+
+# --- JSON Import ---
+class JsonTransactionItem(BaseModel):
+    date: str
+    description: str
+    amount: float | str
+    type: Optional[str] = "expense"
+    category_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class JsonImportPayload(BaseModel):
+    transactions: list[JsonTransactionItem]
+
+
+@router.post("/import-json", status_code=201)
+async def import_json(payload: JsonImportPayload, db: AsyncSession = Depends(get_db)):
+    """Import transactions from a JSON payload."""
+    created = 0
+    errors: list[str] = []
+    for i, item in enumerate(payload.transactions):
+        try:
+            tx_date = date.fromisoformat(item.date)
+        except (ValueError, TypeError):
+            errors.append(f"Linha {i + 1}: data inválida '{item.date}'")
+            continue
+        try:
+            amount = abs(Decimal(str(item.amount)))
+        except (InvalidOperation, ValueError):
+            errors.append(f"Linha {i + 1}: valor inválido '{item.amount}'")
+            continue
+        tx_type = item.type if item.type in ("expense", "income") else "expense"
+        tx = Transaction(
+            date=tx_date,
+            description=item.description,
+            amount=amount,
+            type=tx_type,
+            category_id=item.category_id,
+            notes=item.notes,
+            source="json_import",
+        )
+        db.add(tx)
+        created += 1
+    await db.commit()
+    return {"created": created, "errors": errors}

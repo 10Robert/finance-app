@@ -19,6 +19,7 @@ export interface Transaction {
   is_recurring: boolean
   recurring_day: number | null
   icon: string
+  source: string | null
   created_at: string
   updated_at: string
 }
@@ -130,6 +131,10 @@ export interface SalaryConfig {
   overtime_hour_rate: number
   meal_allowance: number
   health_plan_deduction: number
+  dental_plan_deduction: number
+  transport_voucher_enabled: boolean
+  transport_voucher_percent: number
+  fgts_balance: number
   discounts: DiscountData[]
   overtime_entries: OvertimeEntryData[]
   created_at: string
@@ -202,4 +207,132 @@ export interface CategoryProgress {
 export interface TransactionsGrouped {
   one_time: Transaction[]
   recurring: Transaction[]
+}
+
+// Expenses Chart (stacked bar)
+export interface ExpensesChartBar {
+  label: string
+  income: number
+  expenses: number
+  net: number
+  accumulated: number
+}
+
+export interface ExpensesChartData {
+  mode: 'annual' | 'monthly' | 'weekly'
+  bars: ExpensesChartBar[]
+  total_expenses: number
+  monthly_average: number
+  highest_label: string
+}
+
+// Fixed Expenses
+export interface FixedExpense {
+  id: number
+  description: string
+  amount: number
+  category_id: number | null
+  category: Category | null
+  day_of_month: number
+  is_permanent: boolean
+  start_date: string
+  end_date: string | null
+  active: boolean
+  icon: string
+  created_at: string
+}
+
+export interface FixedExpenseCreate {
+  description: string
+  amount: number
+  category_id?: number | null
+  day_of_month?: number
+  is_permanent?: boolean
+  start_date: string
+  end_date?: string | null
+  icon?: string
+}
+
+// Installment Purchases
+export interface InstallmentPurchase {
+  id: number
+  description: string
+  total_amount: number
+  installment_count: number
+  category_id: number | null
+  category: Category | null
+  start_date: string
+  icon: string
+  created_at: string
+}
+
+export interface InstallmentPurchaseCreate {
+  description: string
+  total_amount: number
+  installment_count: number
+  category_id?: number | null
+  start_date: string
+  icon?: string
+}
+
+// Monthly Entries (overtime / refund / late / absence launches)
+export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence'
+
+export interface MonthlyEntry {
+  id: number
+  reference_month: number
+  reference_year: number
+  entry_type: MonthlyEntryType
+  entry_date: string
+  description: string | null
+  amount: number | null
+  hours: number | null
+  overtime_multiplier: number | null
+  days: number | null
+  created_at: string
+}
+
+export interface MonthlyEntryCreate {
+  reference_month: number
+  reference_year: number
+  entry_type: MonthlyEntryType
+  entry_date?: string | null
+  description?: string | null
+  amount?: number | null
+  hours?: number | null
+  overtime_multiplier?: number | null
+  days?: number | null
+}
+
+export interface MonthlyEntryUpdate {
+  entry_date?: string | null
+  description?: string | null
+  amount?: number | null
+  hours?: number | null
+  overtime_multiplier?: number | null
+  days?: number | null
+}
+
+export interface MonthlySummary {
+  reference_month: number
+  reference_year: number
+  base_salary: number
+  meal_allowance: number
+  overtime_hours_total: number
+  overtime_value: number
+  refunds_total: number
+  late_hours_total: number
+  late_value: number
+  absence_days_total: number
+  absence_value: number
+  discounts_absences_value: number
+  health_plan_deduction: number
+  dental_plan_deduction: number
+  transport_voucher_value: number
+  inss: number
+  irrf: number
+  total_gross: number
+  total_deductions: number
+  net_salary: number
+  fgts_balance: number
 }

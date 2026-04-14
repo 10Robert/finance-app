@@ -18,9 +18,18 @@ import type {
   OvertimeEntryData,
   Income,
   IncomeCalculateRequest,
+  MonthlyEntry,
+  MonthlyEntryCreate,
+  MonthlyEntryUpdate,
+  MonthlySummary,
   ChartMonth,
   CategoryProgress,
   TransactionsGrouped,
+  FixedExpense,
+  FixedExpenseCreate,
+  InstallmentPurchase,
+  InstallmentPurchaseCreate,
+  ExpensesChartData,
 } from '../types'
 
 const api = axios.create({ baseURL: '/api' })
@@ -76,10 +85,14 @@ export const updateStagedTransactions = (
 ) => api.put(`/imports/${id}/staged`, { updates })
 
 export const confirmImport = (id: number) =>
-  api.post<{ count: number }>(`/imports/${id}/confirm`).then((r) => r.data)
+  api
+    .post<{ message: string; created: number; skipped_income: number }>(
+      `/imports/${id}/confirm`
+    )
+    .then((r) => r.data)
 
 // Dashboard - New endpoints
-export const getBalance = (params: { year: number; month?: number }) =>
+export const getBalance = (params: { year?: number; month?: number; start_date?: string; end_date?: string }) =>
   api.get<BalanceData>('/dashboard/balance', { params }).then((r) => r.data)
 
 export const getMonthlyRevenue = (params: { year: number; month?: number }) =>
@@ -105,11 +118,27 @@ export const getMonthlyTrends = (months?: number) =>
 export const getSalaryConfig = () =>
   api.get<SalaryConfig | null>('/salary/config').then((r) => r.data)
 
-export const saveSalaryConfig = (data: { base_salary: number; overtime_hour_rate: number; meal_allowance?: number; health_plan_deduction?: number }) =>
-  api.post<SalaryConfig>('/salary/config', data).then((r) => r.data)
+export const saveSalaryConfig = (data: {
+  base_salary: number
+  overtime_hour_rate: number
+  meal_allowance?: number
+  health_plan_deduction?: number
+  dental_plan_deduction?: number
+  transport_voucher_enabled?: boolean
+  transport_voucher_percent?: number
+  fgts_balance?: number
+}) => api.post<SalaryConfig>('/salary/config', data).then((r) => r.data)
 
-export const updateSalaryConfig = (data: { base_salary?: number; overtime_hour_rate?: number; meal_allowance?: number; health_plan_deduction?: number }) =>
-  api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
+export const updateSalaryConfig = (data: {
+  base_salary?: number
+  overtime_hour_rate?: number
+  meal_allowance?: number
+  health_plan_deduction?: number
+  dental_plan_deduction?: number
+  transport_voucher_enabled?: boolean
+  transport_voucher_percent?: number
+  fgts_balance?: number
+}) => api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
 
 export const addDiscount = (data: { name: string; type: string; value: number }) =>
   api.post<DiscountData>('/salary/discounts', data).then((r) => r.data)
@@ -139,6 +168,22 @@ export const getIncomes = () =>
 export const deleteIncome = (id: number) =>
   api.delete(`/incomes/${id}`)
 
+// Monthly Entries (overtime / refund / late / absence)
+export const getMonthlyEntries = (params: { month: number; year: number }) =>
+  api.get<MonthlyEntry[]>('/monthly-entries/', { params }).then((r) => r.data)
+
+export const createMonthlyEntry = (data: MonthlyEntryCreate) =>
+  api.post<MonthlyEntry>('/monthly-entries/', data).then((r) => r.data)
+
+export const updateMonthlyEntry = (id: number, data: MonthlyEntryUpdate) =>
+  api.put<MonthlyEntry>(`/monthly-entries/${id}`, data).then((r) => r.data)
+
+export const deleteMonthlyEntry = (id: number) =>
+  api.delete(`/monthly-entries/${id}`)
+
+export const getMonthlySummary = (params: { month: number; year: number }) =>
+  api.get<MonthlySummary>('/monthly-entries/summary', { params }).then((r) => r.data)
+
 // Dashboard - New endpoints
 export const getChart6Months = () =>
   api.get<ChartMonth[]>('/dashboard/chart-6months').then((r) => r.data)
@@ -146,5 +191,41 @@ export const getChart6Months = () =>
 export const getCategoryProgress = (params?: { year?: number; month?: number }) =>
   api.get<CategoryProgress[]>('/dashboard/category-progress', { params }).then((r) => r.data)
 
-export const getTransactionsGrouped = (params?: { year?: number; month?: number }) =>
+export const getTransactionsGrouped = (params?: { year?: number; month?: number; start_date?: string; end_date?: string }) =>
   api.get<TransactionsGrouped>('/dashboard/transactions-grouped', { params }).then((r) => r.data)
+
+// Expenses chart (stacked bar)
+export const getExpensesChart = (params: { mode?: string; year?: number; month?: number; week_start?: string }) =>
+  api.get<ExpensesChartData>('/dashboard/expenses-chart', { params }).then((r) => r.data)
+
+// Category transactions drill-down
+export const getCategoryTransactions = (params: { category_name: string; start_date?: string; end_date?: string; year?: number; month?: number }) =>
+  api.get<Transaction[]>('/dashboard/category-transactions', { params }).then((r) => r.data)
+
+// Top categories with date range support
+export const getTopCategoriesRange = (params: { start_date?: string; end_date?: string; year?: number; month?: number; limit?: number }) =>
+  api.get<SpendingByCategory[]>('/dashboard/top-categories', { params }).then((r) => r.data)
+
+// Fixed Expenses
+export const getFixedExpenses = () =>
+  api.get<FixedExpense[]>('/fixed-expenses/').then((r) => r.data)
+
+export const createFixedExpense = (data: FixedExpenseCreate) =>
+  api.post<FixedExpense>('/fixed-expenses/', data).then((r) => r.data)
+
+export const deleteFixedExpense = (id: number) =>
+  api.delete(`/fixed-expenses/${id}`)
+
+// Installment Purchases
+export const getInstallments = () =>
+  api.get<InstallmentPurchase[]>('/installments/').then((r) => r.data)
+
+export const createInstallment = (data: InstallmentPurchaseCreate) =>
+  api.post<InstallmentPurchase>('/installments/', data).then((r) => r.data)
+
+export const deleteInstallment = (id: number) =>
+  api.delete(`/installments/${id}`)
+
+// JSON Import
+export const importTransactionsJson = (transactions: Record<string, unknown>[]) =>
+  api.post<{ created: number; errors: string[] }>('/transactions/import-json', { transactions }).then((r) => r.data)

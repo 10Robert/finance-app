@@ -56,6 +56,7 @@ class Transaction(Base):
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     recurring_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
     icon: Mapped[str] = mapped_column(String(50), default="receipt_long", server_default="receipt_long")
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -71,11 +72,35 @@ class SalaryConfig(Base):
     overtime_hour_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     meal_allowance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
     health_plan_deduction: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    dental_plan_deduction: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    transport_voucher_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    transport_voucher_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("6.00"), server_default="6.00")
+    fgts_balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     discounts: Mapped[list["Discount"]] = relationship(back_populates="salary_config", cascade="all, delete-orphan")
     overtime_entries: Mapped[list["OvertimeEntry"]] = relationship(back_populates="salary_config", cascade="all, delete-orphan")
+
+
+class MonthlyEntry(Base):
+    """A single launch within a reference month: overtime, refund, late-hours or absence."""
+    __tablename__ = "monthly_entries"
+    __table_args__ = (
+        Index("idx_monthly_entries_period", "reference_year", "reference_month"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference_month: Mapped[int] = mapped_column(Integer)  # 1-12
+    reference_year: Mapped[int] = mapped_column(Integer)
+    entry_type: Mapped[str] = mapped_column(String(20))  # 'overtime' | 'refund' | 'late' | 'absence'
+    entry_date: Mapped[date] = mapped_column(Date)
+    description: Mapped[str | None] = mapped_column(Text)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # refunds: BRL value
+    hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))  # overtime/late: hours
+    overtime_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(4, 2))  # overtime: 0.30/0.70/1.00
+    days: Mapped[int | None] = mapped_column(Integer)  # absence: missed days
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class Discount(Base):
@@ -103,6 +128,41 @@ class OvertimeEntry(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     salary_config: Mapped["SalaryConfig"] = relationship(back_populates="overtime_entries")
+
+
+class FixedExpense(Base):
+    """A recurring monthly expense: either permanent or with an end date."""
+    __tablename__ = "fixed_expenses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    description: Mapped[str] = mapped_column(String(500))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    day_of_month: Mapped[int] = mapped_column(Integer, default=1)
+    is_permanent: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    start_date: Mapped[date] = mapped_column(Date)  # first month (YYYY-MM-01)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # null = permanent
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    icon: Mapped[str] = mapped_column(String(50), default="repeat", server_default="repeat")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    category: Mapped[Category | None] = relationship()
+
+
+class InstallmentPurchase(Base):
+    """A product bought in installments: total value split across N months."""
+    __tablename__ = "installment_purchases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    description: Mapped[str] = mapped_column(String(500))
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    installment_count: Mapped[int] = mapped_column(Integer)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    start_date: Mapped[date] = mapped_column(Date)  # first installment month
+    icon: Mapped[str] = mapped_column(String(50), default="credit_card", server_default="credit_card")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    category: Mapped[Category | None] = relationship()
 
 
 class StagedTransaction(Base):
