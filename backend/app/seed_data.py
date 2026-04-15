@@ -108,10 +108,11 @@ async def seed():
             session.add(config)
 
         # --- Income History ---
+        # Usa anos com tabelas INSS/IRRF configuradas (2024-2026).
         income_data = [
-            {"month": 7, "year": 2023, "overtime_hours": Decimal("0"), "multiplier": Decimal("0.30"), "bonus": Decimal("0"), "discounts": Decimal("0")},
-            {"month": 8, "year": 2023, "overtime_hours": Decimal("0"), "multiplier": Decimal("0.30"), "bonus": Decimal("0"), "discounts": Decimal("0")},
-            {"month": 9, "year": 2023, "overtime_hours": Decimal("10"), "multiplier": Decimal("0.30"), "bonus": Decimal("500"), "discounts": Decimal("0")},
+            {"month": 1, "year": 2026, "overtime_hours": Decimal("0"), "multiplier": Decimal("0.30"), "bonus": Decimal("0"), "discounts": Decimal("0")},
+            {"month": 2, "year": 2026, "overtime_hours": Decimal("0"), "multiplier": Decimal("0.30"), "bonus": Decimal("0"), "discounts": Decimal("0")},
+            {"month": 3, "year": 2026, "overtime_hours": Decimal("10"), "multiplier": Decimal("0.30"), "bonus": Decimal("500"), "discounts": Decimal("0")},
         ]
 
         for data in income_data:
@@ -123,6 +124,8 @@ async def seed():
                 overtime_multiplier=data["multiplier"],
                 monthly_bonus=data["bonus"],
                 discounts_absences=data["discounts"],
+                reference_year=data["year"],
+                reference_month=data["month"],
             )
             income = Income(
                 reference_month=data["month"],

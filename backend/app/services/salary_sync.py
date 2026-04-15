@@ -105,7 +105,12 @@ def compute_monthly_summary(
 
     inss_base = base_salary_due + overtime_value
     inss = calculate_inss(inss_base, year)
-    irrf = calculate_irrf(inss_base - inss, year, month)
+    irrf = calculate_irrf(
+        inss_base - inss,
+        year,
+        month,
+        monthly_gross=inss_base,
+    )
 
     transport_voucher_value = Decimal("0.00")
     if config.transport_voucher_enabled:

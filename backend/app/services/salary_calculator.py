@@ -85,6 +85,12 @@ IRRF_RULES = {
             (Decimal("4664.68"), Decimal("0.225"), Decimal("675.49")),
             (Decimal("999999999"), Decimal("0.275"), Decimal("908.73")),
         ),
+        # Reforma do IR 2026 (PL 1.087/2025):
+        # - Renda mensal bruta tributável <= R$ 5.000 → IRRF zerado
+        # - Entre R$ 5.000 e R$ 7.350 → redutor linear sobre o IRRF apurado
+        # - Acima de R$ 7.350 → tabela normal
+        "reform_2026_exemption_threshold": Decimal("5000.00"),
+        "reform_2026_max_threshold": Decimal("7350.00"),
     },
 }
 
@@ -119,13 +125,47 @@ def calculate_inss(base: Decimal, reference_year: int) -> Decimal:
     return money(total)
 
 
-def calculate_irrf(base_after_inss: Decimal, reference_year: int, reference_month: int | None = None) -> Decimal:
+def calculate_irrf(
+    base_after_inss: Decimal,
+    reference_year: int,
+    reference_month: int | None = None,
+    monthly_gross: Decimal | None = None,
+) -> Decimal:
+    """
+    Calcula o IRRF mensal.
+
+    Args:
+        base_after_inss: base de cálculo (rendimento tributável após desconto do INSS).
+        reference_year: ano de referência (define a tabela aplicável).
+        reference_month: mês de referência (necessário em 2025 para regras pré/pós abril).
+        monthly_gross: rendimento mensal bruto tributável (antes do INSS). Quando informado
+            e a regra do ano contém parâmetros da reforma 2026 (PL 1.087/2025), aplica:
+              - isenção total para rendimentos <= R$ 5.000;
+              - redutor linear entre R$ 5.000 e R$ 7.350;
+              - tabela normal acima de R$ 7.350.
+    """
     rule = _resolve_irrf_rule(reference_year, reference_month)
     taxable_base = max(base_after_inss - rule["monthly_simplified_deduction"], Decimal("0"))
+
+    irrf = Decimal("0.00")
     for limit, rate, deduction in rule["brackets"]:
         if taxable_base <= limit:
-            return money(max(taxable_base * rate - deduction, Decimal("0")))
-    return Decimal("0.00")
+            irrf = money(max(taxable_base * rate - deduction, Decimal("0")))
+            break
+
+    # Reforma 2026 — aplica somente quando temos a renda mensal bruta de referência
+    # e a regra do ano publica os parâmetros da reforma.
+    exemption = rule.get("reform_2026_exemption_threshold")
+    max_threshold = rule.get("reform_2026_max_threshold")
+    if monthly_gross is not None and exemption is not None and max_threshold is not None:
+        if monthly_gross <= exemption:
+            return Decimal("0.00")
+        if monthly_gross < max_threshold:
+            # Redutor linear: à medida que a renda se aproxima do teto, o IRRF tende ao valor cheio.
+            factor = (monthly_gross - exemption) / (max_threshold - exemption)
+            irrf = money(irrf * factor)
+
+    return irrf
 
 
 def calculate_net_salary(
@@ -146,7 +186,12 @@ def calculate_net_salary(
     inss_base = base_salary + overtime_value + monthly_bonus
     inss = calculate_inss(inss_base, reference_year)
     irrf_base = inss_base - inss
-    irrf = calculate_irrf(irrf_base, reference_year, reference_month)
+    irrf = calculate_irrf(
+        irrf_base,
+        reference_year,
+        reference_month,
+        monthly_gross=inss_base,
+    )
     total_deductions = money(health_plan_deduction + inss + irrf + discounts_absences)
     net_salary = money(total_gross - total_deductions)
 
