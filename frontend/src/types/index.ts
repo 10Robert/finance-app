@@ -135,6 +135,9 @@ export interface SalaryConfig {
   transport_voucher_enabled: boolean
   transport_voucher_percent: number
   fgts_balance: number
+  reference_month: number | null
+  reference_year: number | null
+  coparticipation: number
   discounts: DiscountData[]
   overtime_entries: OvertimeEntryData[]
   created_at: string
@@ -275,8 +278,8 @@ export interface InstallmentPurchaseCreate {
   icon?: string
 }
 
-// Monthly Entries (overtime / refund / late / absence launches)
-export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence'
+// Monthly Entries (overtime / refund / late / absence / medical certificate launches)
+export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence' | 'medical_certificate'
 
 export interface MonthlyEntry {
   id: number
@@ -329,6 +332,8 @@ export interface MonthlySummary {
   health_plan_deduction: number
   dental_plan_deduction: number
   transport_voucher_value: number
+  coparticipation: number
+  medical_certificate_days: number
   inss: number
   irrf: number
   total_gross: number

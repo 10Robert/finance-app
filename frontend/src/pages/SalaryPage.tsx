@@ -39,6 +39,7 @@ const ENTRY_BADGE: Record<MonthlyEntryType, { label: string; color: string; icon
   refund: { label: 'Reembolso', color: 'tertiary', icon: 'payments' },
   late: { label: 'Atraso', color: 'error', icon: 'schedule' },
   absence: { label: 'Falta', color: 'error', icon: 'event_busy' },
+  medical_certificate: { label: 'Atestado', color: 'tertiary', icon: 'medical_services' },
 }
 
 const extractError = (err: unknown): string => {
@@ -64,12 +65,16 @@ export default function SalaryPage() {
   const [absenceDescription, setAbsenceDescription] = useState('')
   const [refundAmount, setRefundAmount] = useState('')
   const [refundDescription, setRefundDescription] = useState('')
+  const [medicalDays, setMedicalDays] = useState('')
+  const [medicalDescription, setMedicalDescription] = useState('')
 
   // Settings modal
   const [showConfig, setShowConfig] = useState(false)
   const [cfgBaseSalary, setCfgBaseSalary] = useState('')
+  const [cfgMealAllowance, setCfgMealAllowance] = useState('')
   const [cfgHealthPlan, setCfgHealthPlan] = useState('')
   const [cfgDentalPlan, setCfgDentalPlan] = useState('')
+  const [cfgCoparticipation, setCfgCoparticipation] = useState('')
   const [cfgVtEnabled, setCfgVtEnabled] = useState(false)
   const [cfgVtPercent, setCfgVtPercent] = useState('6')
   const [cfgFgts, setCfgFgts] = useState('')
@@ -81,8 +86,8 @@ export default function SalaryPage() {
   const [editMultiplier, setEditMultiplier] = useState(0.3)
 
   const { data: config } = useQuery({
-    queryKey: ['salary-config'],
-    queryFn: getSalaryConfig,
+    queryKey: ['salary-config', selectedMonth, selectedYear],
+    queryFn: () => getSalaryConfig({ month: selectedMonth, year: selectedYear }),
   })
 
   const { data: entries } = useQuery({
@@ -140,15 +145,19 @@ export default function SalaryPage() {
   const openConfigModal = () => {
     if (config) {
       setCfgBaseSalary(String(config.base_salary))
+      setCfgMealAllowance(String(config.meal_allowance || 0))
       setCfgHealthPlan(String(config.health_plan_deduction || 0))
       setCfgDentalPlan(String(config.dental_plan_deduction || 0))
+      setCfgCoparticipation(String(config.coparticipation || 0))
       setCfgVtEnabled(config.transport_voucher_enabled || false)
       setCfgVtPercent(String(config.transport_voucher_percent || 6))
       setCfgFgts(String(config.fgts_balance || 0))
     } else {
       setCfgBaseSalary('')
+      setCfgMealAllowance('0')
       setCfgHealthPlan('0')
       setCfgDentalPlan('0')
+      setCfgCoparticipation('0')
       setCfgVtEnabled(false)
       setCfgVtPercent('6')
       setCfgFgts('0')
@@ -161,16 +170,22 @@ export default function SalaryPage() {
       saveSalaryConfig({
         base_salary: parseFloat(cfgBaseSalary) || 0,
         overtime_hour_rate: config?.overtime_hour_rate ?? 0,
-        meal_allowance: config?.meal_allowance ?? 0,
+        meal_allowance: parseFloat(cfgMealAllowance) || 0,
         health_plan_deduction: parseFloat(cfgHealthPlan) || 0,
         dental_plan_deduction: parseFloat(cfgDentalPlan) || 0,
+        coparticipation: parseFloat(cfgCoparticipation) || 0,
         transport_voucher_enabled: cfgVtEnabled,
         transport_voucher_percent: parseFloat(cfgVtPercent) || 0,
         fgts_balance: parseFloat(cfgFgts) || 0,
+        reference_month: selectedMonth,
+        reference_year: selectedYear,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['salary-config'] })
       qc.invalidateQueries({ queryKey: ['monthly-summary'] })
+      qc.invalidateQueries({ queryKey: ['monthly-entries'] })
+      qc.invalidateQueries({ queryKey: ['balance'] })
+      qc.invalidateQueries({ queryKey: ['month-expenses'] })
       setShowConfig(false)
     },
     onError: (err) => alert(`Erro ao salvar configurações: ${extractError(err)}`),
@@ -262,11 +277,26 @@ export default function SalaryPage() {
     setRefundDescription('')
   }
 
+  const launchMedical = () => {
+    const d = parseInt(medicalDays, 10)
+    if (!d || d <= 0) return alert('Informe a quantidade de dias de atestado.')
+    createMut.mutate({
+      reference_month: selectedMonth,
+      reference_year: selectedYear,
+      entry_type: 'medical_certificate',
+      days: d,
+      description: medicalDescription || null,
+    })
+    setMedicalDays('')
+    setMedicalDescription('')
+  }
+
   const openEdit = (entry: MonthlyEntry) => {
     setEditing(entry)
     setEditDescription(entry.description ?? '')
     if (entry.entry_type === 'refund') setEditValue(String(entry.amount ?? ''))
-    else if (entry.entry_type === 'absence') setEditValue(String(entry.days ?? ''))
+    else if (entry.entry_type === 'absence' || entry.entry_type === 'medical_certificate')
+      setEditValue(String(entry.days ?? ''))
     else setEditValue(String(entry.hours ?? ''))
     setEditMultiplier(Number(entry.overtime_multiplier ?? 0.3))
   }
@@ -276,7 +306,8 @@ export default function SalaryPage() {
     const v = parseFloat(editValue)
     const data: Parameters<typeof updateMonthlyEntry>[1] = { description: editDescription || null }
     if (editing.entry_type === 'refund') data.amount = v
-    else if (editing.entry_type === 'absence') data.days = parseInt(editValue, 10)
+    else if (editing.entry_type === 'absence' || editing.entry_type === 'medical_certificate')
+      data.days = parseInt(editValue, 10)
     else data.hours = v
     if (editing.entry_type === 'overtime') data.overtime_multiplier = editMultiplier
     updateMut.mutate({ id: editing.id, data })
@@ -490,15 +521,57 @@ export default function SalaryPage() {
               </button>
             </section>
 
-            {/* Reembolsos (full width) */}
-            <section className={`${cardClass} md:col-span-2`}>
+            {/* Atestado Médico */}
+            <section className={cardClass}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded bg-[#34d399]/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[#34d399]">medical_services</span>
+                </div>
+                <h3 className="font-bold text-[#fafafa]">Lançamento de Atestado</h3>
+              </div>
+              <div className="space-y-4 flex-1">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Dias de Atestado</label>
+                  <input
+                    type="number"
+                    value={medicalDays}
+                    onChange={(e) => setMedicalDays(e.target.value)}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Descrição (opcional)</label>
+                  <input
+                    type="text"
+                    value={medicalDescription}
+                    onChange={(e) => setMedicalDescription(e.target.value)}
+                    placeholder="Ex: Gripe, cirurgia…"
+                    className={inputClass}
+                  />
+                </div>
+                <p className="text-[10px] text-[#52525b] italic">
+                  Atestado médico não gera desconto de salário (empregador paga).
+                </p>
+              </div>
+              <button
+                onClick={launchMedical}
+                disabled={createMut.isPending}
+                className="w-full mt-6 py-2.5 border border-[#34d399]/30 hover:bg-[#34d399]/10 text-[#34d399] font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                Lançar Atestado
+              </button>
+            </section>
+
+            {/* Reembolsos */}
+            <section className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded bg-[#34d399]/10 flex items-center justify-center">
                   <span className="material-symbols-outlined text-[#34d399]">payments</span>
                 </div>
                 <h3 className="font-bold text-[#fafafa]">Lançamento de Reembolsos</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+              <div className="space-y-4 flex-1">
                 <div>
                   <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Valor do Reembolso</label>
                   <div className="relative">
@@ -595,10 +668,25 @@ export default function SalaryPage() {
                     <span className="text-sm text-[#a1a1aa]">Plano Odontológico</span>
                     <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.dental_plan_deduction))}</span>
                   </div>
+                  {Number(summary.coparticipation) > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-[#a1a1aa]">Coparticipação Saúde</span>
+                      <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.coparticipation))}</span>
+                    </div>
+                  )}
                   {Number(summary.transport_voucher_value) > 0 && (
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-[#a1a1aa]">Vale Transporte</span>
                       <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.transport_voucher_value))}</span>
+                    </div>
+                  )}
+                  {summary.medical_certificate_days > 0 && (
+                    <div className="flex justify-between items-center border-t border-[#27272a] pt-3">
+                      <span className="text-sm text-[#a1a1aa] flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[#34d399] text-sm">medical_services</span>
+                        Atestado Médico ({summary.medical_certificate_days}d)
+                      </span>
+                      <span className="text-xs italic text-[#52525b]">sem desconto</span>
                     </div>
                   )}
                 </div>
@@ -670,6 +758,7 @@ export default function SalaryPage() {
                   let valueText = ''
                   if (entry.entry_type === 'refund') valueText = fmt(Number(entry.amount || 0))
                   else if (entry.entry_type === 'absence') valueText = `${entry.days} dia${entry.days === 1 ? '' : 's'}`
+                  else if (entry.entry_type === 'medical_certificate') valueText = `${entry.days} dia${entry.days === 1 ? '' : 's'}`
                   else if (entry.entry_type === 'overtime') {
                     const mult = Number(entry.overtime_multiplier || 0) * 100
                     valueText = `${Number(entry.hours)}h (${mult.toFixed(0)}%)`
@@ -718,8 +807,22 @@ export default function SalaryPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowConfig(false)}>
           <div className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-[#fafafa]">Configurações de Rendimentos</h3>
+              <div>
+                <h3 className="text-lg font-bold text-[#fafafa]">Configurações de Rendimentos</h3>
+                <p className="text-xs text-[#a78bfa] mt-0.5">
+                  Referente a {MONTHS[selectedMonth - 1]}/{selectedYear}
+                </p>
+              </div>
               <button onClick={() => setShowConfig(false)} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
+            </div>
+
+            <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/20 rounded-lg px-3 py-2">
+              <p className="text-xs text-[#a78bfa] flex items-start gap-1.5">
+                <span className="material-symbols-outlined text-sm mt-0.5">info</span>
+                <span>
+                  Ao salvar, estas configurações se aplicam <strong>somente a {MONTHS[selectedMonth - 1]}/{selectedYear}</strong>. Outros meses mantêm suas próprias configurações.
+                </span>
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -732,11 +835,30 @@ export default function SalaryPage() {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Plano de Saúde</label>
+                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Vale Refeição / Alimentação</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <input type="number" step="0.01" value={cfgMealAllowance} onChange={(e) => setCfgMealAllowance(e.target.value)} className={`${inputClass} pl-10`} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Plano de Saúde (mensalidade)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
                   <input type="number" step="0.01" value={cfgHealthPlan} onChange={(e) => setCfgHealthPlan(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Coparticipação Plano de Saúde</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <input type="number" step="0.01" value={cfgCoparticipation} onChange={(e) => setCfgCoparticipation(e.target.value)} className={`${inputClass} pl-10`} />
+                </div>
+                <p className="text-[10px] text-[#52525b] mt-1 italic">
+                  Valor variável cobrado mensalmente conforme uso do plano.
+                </p>
               </div>
 
               <div>
@@ -804,11 +926,15 @@ export default function SalaryPage() {
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">
-                  {editing.entry_type === 'refund' ? 'Valor (R$)' : editing.entry_type === 'absence' ? 'Quantidade de Dias' : 'Quantidade de Horas'}
+                  {editing.entry_type === 'refund'
+                    ? 'Valor (R$)'
+                    : editing.entry_type === 'absence' || editing.entry_type === 'medical_certificate'
+                      ? 'Quantidade de Dias'
+                      : 'Quantidade de Horas'}
                 </label>
                 <input
                   type="number"
-                  step={editing.entry_type === 'absence' ? '1' : '0.01'}
+                  step={editing.entry_type === 'absence' || editing.entry_type === 'medical_certificate' ? '1' : '0.01'}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   className={inputClass}

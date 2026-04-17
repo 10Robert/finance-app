@@ -36,6 +36,25 @@ async def lifespan(app: FastAPI):
                 ADD COLUMN IF NOT EXISTS transport_voucher_percent NUMERIC(5,2) NOT NULL DEFAULT 6.00,
                 ADD COLUMN IF NOT EXISTS fgts_balance NUMERIC(12,2) NOT NULL DEFAULT 0
         """))
+        await conn.execute(text("""
+            ALTER TABLE salary_configs
+                ADD COLUMN IF NOT EXISTS reference_month INTEGER,
+                ADD COLUMN IF NOT EXISTS reference_year INTEGER,
+                ADD COLUMN IF NOT EXISTS coparticipation NUMERIC(12,2) NOT NULL DEFAULT 0
+        """))
+        # Create unique constraint if it doesn't exist yet
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'uq_salary_config_month_year'
+                ) THEN
+                    ALTER TABLE salary_configs
+                        ADD CONSTRAINT uq_salary_config_month_year
+                        UNIQUE (reference_month, reference_year);
+                END IF;
+            END$$
+        """))
         # Normalize legacy negative amounts: imports stored expenses as
         # negatives, but the canonical convention is positive amount + `type`.
         await conn.execute(text("""
