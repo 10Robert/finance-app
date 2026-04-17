@@ -18,10 +18,21 @@ from app.services.salary_sync import compute_monthly_summary, sync_salary_transa
 router = APIRouter()
 
 
-async def _get_salary_config(db: AsyncSession) -> SalaryConfig | None:
+async def _get_salary_config(db: AsyncSession, month: int = None, year: int = None) -> SalaryConfig | None:
+    if month and year:
+        result = await db.execute(
+            select(SalaryConfig)
+            .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+            .where(SalaryConfig.reference_month == month, SalaryConfig.reference_year == year)
+        )
+        config = result.scalar_one_or_none()
+        if config:
+            return config
+    # Fall back to global
     result = await db.execute(
         select(SalaryConfig)
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+        .where(SalaryConfig.reference_month.is_(None))
         .order_by(SalaryConfig.id.desc())
         .limit(1)
     )
@@ -45,6 +56,9 @@ def _validate_payload(data: MonthlyEntryCreate) -> None:
     elif t == "absence":
         if data.days is None or data.days <= 0:
             raise HTTPException(422, "Falta requer 'days' > 0")
+    elif t == "medical_certificate":
+        if data.days is None or data.days <= 0:
+            raise HTTPException(422, "Atestado médico requer 'days' > 0")
     else:
         raise HTTPException(422, f"entry_type inválido: {t}")
 
@@ -114,7 +128,7 @@ async def month_summary(
     year: int = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
-    config = await _get_salary_config(db)
+    config = await _get_salary_config(db, month=month, year=year)
     if not config:
         raise HTTPException(404, "Salary config não encontrada. Configure seu salário primeiro.")
 

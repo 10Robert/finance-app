@@ -221,6 +221,9 @@ class SalaryConfigCreate(BaseModel):
     transport_voucher_enabled: bool = False
     transport_voucher_percent: Decimal = Decimal("6.00")
     fgts_balance: Decimal = Decimal("0")
+    reference_month: Optional[int] = None
+    reference_year: Optional[int] = None
+    coparticipation: Decimal = Decimal("0")
 
 
 class SalaryConfigUpdate(BaseModel):
@@ -232,6 +235,7 @@ class SalaryConfigUpdate(BaseModel):
     transport_voucher_enabled: Optional[bool] = None
     transport_voucher_percent: Optional[Decimal] = None
     fgts_balance: Optional[Decimal] = None
+    coparticipation: Optional[Decimal] = None
 
 
 class SalaryConfigOut(BaseModel):
@@ -245,6 +249,9 @@ class SalaryConfigOut(BaseModel):
     transport_voucher_enabled: bool = False
     transport_voucher_percent: Decimal = Decimal("6.00")
     fgts_balance: Decimal = Decimal("0")
+    reference_month: Optional[int] = None
+    reference_year: Optional[int] = None
+    coparticipation: Decimal = Decimal("0")
     discounts: list[DiscountOut]
     overtime_entries: list[OvertimeEntryOut]
     created_at: DateTime
@@ -444,6 +451,8 @@ class MonthlySummaryOut(BaseModel):
     health_plan_deduction: Decimal
     dental_plan_deduction: Decimal
     transport_voucher_value: Decimal
+    coparticipation: Decimal = Decimal("0")
+    medical_certificate_days: int = 0
     inss: Decimal
     irrf: Decimal
     total_gross: Decimal

@@ -66,8 +66,13 @@ class Transaction(Base):
 
 class SalaryConfig(Base):
     __tablename__ = "salary_configs"
+    __table_args__ = (
+        UniqueConstraint("reference_month", "reference_year", name="uq_salary_config_month_year"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    reference_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reference_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     base_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     overtime_hour_rate: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     meal_allowance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
@@ -76,6 +81,7 @@ class SalaryConfig(Base):
     transport_voucher_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     transport_voucher_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("6.00"), server_default="6.00")
     fgts_balance: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    coparticipation: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

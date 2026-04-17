@@ -39,10 +39,26 @@ async def get_or_404(db: AsyncSession) -> SalaryConfig:
 # --- Salary Config ---
 
 @router.get("/config", response_model=SalaryConfigOut | None)
-async def get_salary_config(db: AsyncSession = Depends(get_db)):
+async def get_salary_config(
+    month: int | None = Query(None, ge=1, le=12),
+    year: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    if month is not None and year is not None:
+        # Try per-month config first
+        result = await db.execute(
+            select(SalaryConfig)
+            .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+            .where(SalaryConfig.reference_month == month, SalaryConfig.reference_year == year)
+        )
+        config = result.scalar_one_or_none()
+        if config:
+            return config
+    # Fall back to global (null month/year) or latest
     result = await db.execute(
         select(SalaryConfig)
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+        .where(SalaryConfig.reference_month.is_(None))
         .order_by(SalaryConfig.id.desc())
         .limit(1)
     )
@@ -51,14 +67,29 @@ async def get_salary_config(db: AsyncSession = Depends(get_db)):
 
 @router.post("/config", response_model=SalaryConfigOut)
 async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depends(get_db)):
-    # Only allow one config — update if exists
-    result = await db.execute(
-        select(SalaryConfig)
-        .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-        .order_by(SalaryConfig.id.desc())
-        .limit(1)
-    )
-    config = result.scalar_one_or_none()
+    # Determine if this is a per-month or global config
+    ref_month = data.reference_month
+    ref_year = data.reference_year
+
+    if ref_month is not None and ref_year is not None:
+        # Upsert per-month config
+        result = await db.execute(
+            select(SalaryConfig)
+            .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+            .where(SalaryConfig.reference_month == ref_month, SalaryConfig.reference_year == ref_year)
+        )
+        config = result.scalar_one_or_none()
+    else:
+        # Upsert global config (legacy behavior)
+        result = await db.execute(
+            select(SalaryConfig)
+            .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+            .where(SalaryConfig.reference_month.is_(None))
+            .order_by(SalaryConfig.id.desc())
+            .limit(1)
+        )
+        config = result.scalar_one_or_none()
+
     if config:
         config.base_salary = data.base_salary
         config.overtime_hour_rate = data.overtime_hour_rate
@@ -68,6 +99,7 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
         config.transport_voucher_enabled = data.transport_voucher_enabled
         config.transport_voucher_percent = data.transport_voucher_percent
         config.fgts_balance = data.fgts_balance
+        config.coparticipation = data.coparticipation
     else:
         config = SalaryConfig(
             base_salary=data.base_salary,
@@ -78,6 +110,9 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
             transport_voucher_enabled=data.transport_voucher_enabled,
             transport_voucher_percent=data.transport_voucher_percent,
             fgts_balance=data.fgts_balance,
+            coparticipation=data.coparticipation,
+            reference_month=ref_month,
+            reference_year=ref_year,
         )
         db.add(config)
     await db.commit()
@@ -89,14 +124,35 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
         .where(SalaryConfig.id == config.id)
     )
     out = result.scalar_one()
-    today = DateCls.today()
-    await sync_salary_transaction(db, today.month, today.year)
+    # Sync using the provided month/year or today's
+    if ref_month is not None and ref_year is not None:
+        await sync_salary_transaction(db, ref_month, ref_year)
+    else:
+        today = DateCls.today()
+        await sync_salary_transaction(db, today.month, today.year)
     return out
 
 
 @router.put("/config", response_model=SalaryConfigOut)
-async def update_salary_config(data: SalaryConfigUpdate, db: AsyncSession = Depends(get_db)):
-    config = await get_or_404(db)
+async def update_salary_config(
+    data: SalaryConfigUpdate,
+    month: int | None = Query(None, ge=1, le=12),
+    year: int | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    if month is not None and year is not None:
+        # Find per-month config
+        result = await db.execute(
+            select(SalaryConfig)
+            .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+            .where(SalaryConfig.reference_month == month, SalaryConfig.reference_year == year)
+        )
+        config = result.scalar_one_or_none()
+        if not config:
+            raise HTTPException(status_code=404, detail="Salary config not found for this month/year")
+    else:
+        config = await get_or_404(db)
+
     if data.base_salary is not None:
         config.base_salary = data.base_salary
     if data.overtime_hour_rate is not None:
@@ -113,6 +169,8 @@ async def update_salary_config(data: SalaryConfigUpdate, db: AsyncSession = Depe
         config.transport_voucher_percent = data.transport_voucher_percent
     if data.fgts_balance is not None:
         config.fgts_balance = data.fgts_balance
+    if data.coparticipation is not None:
+        config.coparticipation = data.coparticipation
     await db.commit()
     await db.refresh(config)
     result = await db.execute(
@@ -121,8 +179,12 @@ async def update_salary_config(data: SalaryConfigUpdate, db: AsyncSession = Depe
         .where(SalaryConfig.id == config.id)
     )
     out = result.scalar_one()
-    today = DateCls.today()
-    await sync_salary_transaction(db, today.month, today.year)
+    # Sync using the provided month/year or today's
+    if month is not None and year is not None:
+        await sync_salary_transaction(db, month, year)
+    else:
+        today = DateCls.today()
+        await sync_salary_transaction(db, today.month, today.year)
     return out
 
 

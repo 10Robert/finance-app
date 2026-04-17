@@ -36,6 +36,7 @@ def compute_monthly_summary(
     health = config.health_plan_deduction
     dental = config.dental_plan_deduction
     fgts = config.fgts_balance
+    coparticipation = config.coparticipation
 
     hourly_rate = base_salary / HOURS_PER_MONTH
     daily_rate = base_salary / DAYS_PER_MONTH
@@ -47,6 +48,7 @@ def compute_monthly_summary(
     late_value = Decimal("0")
     absence_days_total = 0
     absence_value = Decimal("0")
+    medical_certificate_days = 0
 
     for e in entries:
         if e.entry_type == "overtime" and e.hours:
@@ -61,14 +63,25 @@ def compute_monthly_summary(
         elif e.entry_type == "absence" and e.days:
             absence_days_total += e.days
             absence_value += Decimal(e.days) * daily_rate
+        elif e.entry_type == "medical_certificate" and e.days:
+            medical_certificate_days += e.days
+            # No deduction — employer pays salary during atestado
 
     overtime_value = overtime_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     late_value = late_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     absence_value = absence_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     discounts_absences_value = (late_value + absence_value).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
-    inss_base = base_salary + overtime_value
+    # INSS base = remuneração efetiva (salário base + horas extras - atrasos - faltas).
+    # Atestado médico NÃO reduz a base pois o empregador paga salário normal.
+    # Vale-refeição é excluído por lei; reembolsos também não entram na base.
+    inss_base = (base_salary + overtime_value - late_value - absence_value).quantize(
+        TWO_PLACES, rounding=ROUND_HALF_UP
+    )
+    if inss_base < Decimal("0"):
+        inss_base = Decimal("0")
     inss = calculate_inss(inss_base)
+    # IRRF base = INSS base - INSS (simplificado, sem dependentes)
     irrf = calculate_irrf(inss_base - inss)
 
     transport_voucher_value = Decimal("0")
@@ -81,7 +94,7 @@ def compute_monthly_summary(
         TWO_PLACES, rounding=ROUND_HALF_UP
     )
     total_deductions = (
-        inss + irrf + health + dental + transport_voucher_value + discounts_absences_value
+        inss + irrf + health + dental + coparticipation + transport_voucher_value + discounts_absences_value
     ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     net_salary = (total_gross - total_deductions).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
@@ -101,6 +114,8 @@ def compute_monthly_summary(
         health_plan_deduction=health,
         dental_plan_deduction=dental,
         transport_voucher_value=transport_voucher_value,
+        coparticipation=coparticipation,
+        medical_certificate_days=medical_certificate_days,
         inss=inss,
         irrf=irrf,
         total_gross=total_gross,
@@ -144,10 +159,23 @@ async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> No
     the net salary via :func:`compute_monthly_summary`, then writes a single
     Transaction row tagged with ``source="salary_auto"``.
     """
+    # Try per-month config first
     config_result = await db.execute(
-        select(SalaryConfig).order_by(SalaryConfig.id.desc()).limit(1)
+        select(SalaryConfig).where(
+            SalaryConfig.reference_month == month,
+            SalaryConfig.reference_year == year,
+        )
     )
     config = config_result.scalar_one_or_none()
+    if not config:
+        # Fall back to global (null month/year) or latest
+        config_result = await db.execute(
+            select(SalaryConfig)
+            .where(SalaryConfig.reference_month.is_(None))
+            .order_by(SalaryConfig.id.desc())
+            .limit(1)
+        )
+        config = config_result.scalar_one_or_none()
     if not config:
         return  # nothing to sync
 
