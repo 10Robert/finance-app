@@ -80,9 +80,9 @@ def compute_monthly_summary(
     )
     if inss_base < Decimal("0"):
         inss_base = Decimal("0")
-    inss = calculate_inss(inss_base)
+    inss = calculate_inss(inss_base, year)
     # IRRF base = INSS base - INSS (simplificado, sem dependentes)
-    irrf = calculate_irrf(inss_base - inss)
+    irrf = calculate_irrf(inss_base - inss, year, month, monthly_gross=inss_base)
 
     transport_voucher_value = Decimal("0")
     if config.transport_voucher_enabled:
