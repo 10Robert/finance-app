@@ -13,7 +13,6 @@ import type {
   MonthlyTrend,
   RecentTransaction,
   SalaryConfig,
-  MonthlySalaryConfig,
   SalaryCalculation,
   DiscountData,
   OvertimeEntryData,
@@ -116,8 +115,8 @@ export const getMonthlyTrends = (months?: number) =>
   api.get<MonthlyTrend[]>('/dashboard/monthly-trends', { params: { months } }).then((r) => r.data)
 
 // Salary
-export const getSalaryConfig = () =>
-  api.get<SalaryConfig | null>('/salary/config').then((r) => r.data)
+export const getSalaryConfig = (params?: { month?: number; year?: number }) =>
+  api.get<SalaryConfig | null>('/salary/config', { params }).then((r) => r.data)
 
 export const saveSalaryConfig = (data: {
   base_salary: number
@@ -128,26 +127,25 @@ export const saveSalaryConfig = (data: {
   transport_voucher_enabled?: boolean
   transport_voucher_percent?: number
   fgts_balance?: number
+  reference_month?: number | null
+  reference_year?: number | null
+  coparticipation?: number
 }) => api.post<SalaryConfig>('/salary/config', data).then((r) => r.data)
 
-export const updateSalaryConfig = (data: {
-  base_salary?: number
-  overtime_hour_rate?: number
-  meal_allowance?: number
-  health_plan_deduction?: number
-  dental_plan_deduction?: number
-  transport_voucher_enabled?: boolean
-  transport_voucher_percent?: number
-  fgts_balance?: number
-}) => api.put<SalaryConfig>('/salary/config', data).then((r) => r.data)
-
-export const getMonthlySalaryConfig = (params: { month: number; year: number }) =>
-  api.get<MonthlySalaryConfig>('/salary/monthly-config', { params }).then((r) => r.data)
-
-export const updateMonthlySalaryConfig = (
-  params: { month: number; year: number },
-  data: { base_salary: number }
-) => api.put<MonthlySalaryConfig>('/salary/monthly-config', data, { params }).then((r) => r.data)
+export const updateSalaryConfig = (
+  data: {
+    base_salary?: number
+    overtime_hour_rate?: number
+    meal_allowance?: number
+    health_plan_deduction?: number
+    dental_plan_deduction?: number
+    transport_voucher_enabled?: boolean
+    transport_voucher_percent?: number
+    fgts_balance?: number
+    coparticipation?: number
+  },
+  params?: { month?: number; year?: number },
+) => api.put<SalaryConfig>('/salary/config', data, { params }).then((r) => r.data)
 
 export const addDiscount = (data: { name: string; type: string; value: number }) =>
   api.post<DiscountData>('/salary/discounts', data).then((r) => r.data)

@@ -135,24 +135,11 @@ export interface SalaryConfig {
   transport_voucher_enabled: boolean
   transport_voucher_percent: number
   fgts_balance: number
+  reference_month: number | null
+  reference_year: number | null
+  coparticipation: number
   discounts: DiscountData[]
   overtime_entries: OvertimeEntryData[]
-  created_at: string
-  updated_at: string
-}
-
-export interface MonthlySalaryConfig {
-  id: number
-  reference_month: number
-  reference_year: number
-  base_salary: number
-  overtime_hour_rate: number
-  meal_allowance: number
-  health_plan_deduction: number
-  dental_plan_deduction: number
-  transport_voucher_enabled: boolean
-  transport_voucher_percent: number
-  fgts_balance: number
   created_at: string
   updated_at: string
 }
@@ -291,8 +278,8 @@ export interface InstallmentPurchaseCreate {
   icon?: string
 }
 
-// Monthly Entries (overtime / refund / late / absence launches)
-export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence'
+// Monthly Entries (overtime / refund / late / absence / medical certificate launches)
+export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence' | 'medical_certificate'
 
 export interface MonthlyEntry {
   id: number
@@ -332,8 +319,7 @@ export interface MonthlyEntryUpdate {
 export interface MonthlySummary {
   reference_month: number
   reference_year: number
-  base_salary_contractual: number
-  base_salary_due: number
+  base_salary: number
   meal_allowance: number
   overtime_hours_total: number
   overtime_value: number
@@ -346,6 +332,8 @@ export interface MonthlySummary {
   health_plan_deduction: number
   dental_plan_deduction: number
   transport_voucher_value: number
+  coparticipation: number
+  medical_certificate_days: number
   inss: number
   irrf: number
   total_gross: number

@@ -1,78 +1,45 @@
-"""Salary -> Transactions sync."""
+"""Salary -> Transactions sync.
+
+When the user changes salary config or any monthly entry, we keep a single
+auto-generated income transaction in sync per (month, year). The transaction is
+identified by ``source = "salary_auto"`` and dated on day 5 of the reference
+month. Net <= 0 deletes any existing auto transaction (no point in recording it).
+"""
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Category, MonthlyEntry, MonthlySalarySnapshot, SalaryConfig, Transaction
+from app.models import Category, MonthlyEntry, SalaryConfig, Transaction
 from app.schemas import MonthlySummaryOut
-from app.services.salary_calculator import calculate_inss, calculate_irrf, money
+from app.services.salary_calculator import calculate_inss, calculate_irrf
 
+TWO_PLACES = Decimal("0.01")
 HOURS_PER_MONTH = Decimal("220")
 DAYS_PER_MONTH = Decimal("30")
 SALARY_AUTO_SOURCE = "salary_auto"
 SALARY_CATEGORY_NAME = "Salário"
 
 
-def _snapshot_from_config(config: SalaryConfig, month: int, year: int) -> MonthlySalarySnapshot:
-    return MonthlySalarySnapshot(
-        reference_month=month,
-        reference_year=year,
-        base_salary=config.base_salary,
-        overtime_hour_rate=config.overtime_hour_rate,
-        meal_allowance=config.meal_allowance,
-        health_plan_deduction=config.health_plan_deduction,
-        dental_plan_deduction=config.dental_plan_deduction,
-        transport_voucher_enabled=config.transport_voucher_enabled,
-        transport_voucher_percent=config.transport_voucher_percent,
-        fgts_balance=config.fgts_balance,
-    )
-
-
-async def get_monthly_salary_snapshot(db: AsyncSession, month: int, year: int) -> MonthlySalarySnapshot | None:
-    result = await db.execute(
-        select(MonthlySalarySnapshot).where(
-            MonthlySalarySnapshot.reference_month == month,
-            MonthlySalarySnapshot.reference_year == year,
-        )
-    )
-    return result.scalar_one_or_none()
-
-
-async def ensure_monthly_salary_snapshot(db: AsyncSession, month: int, year: int) -> MonthlySalarySnapshot | None:
-    snapshot = await get_monthly_salary_snapshot(db, month, year)
-    if snapshot:
-        return snapshot
-
-    config_result = await db.execute(select(SalaryConfig).order_by(SalaryConfig.id.desc()).limit(1))
-    config = config_result.scalar_one_or_none()
-    if not config:
-        return None
-
-    snapshot = _snapshot_from_config(config, month, year)
-    db.add(snapshot)
-    await db.commit()
-    await db.refresh(snapshot)
-    return snapshot
-
-
 def compute_monthly_summary(
-    config: SalaryConfig | MonthlySalarySnapshot,
+    config: SalaryConfig,
     entries: Iterable[MonthlyEntry],
     month: int,
     year: int,
 ) -> MonthlySummaryOut:
-    contractual_base_salary = money(config.base_salary)
-    meal_allowance = money(config.meal_allowance)
-    health = money(config.health_plan_deduction)
-    dental = money(config.dental_plan_deduction)
-    fgts = money(config.fgts_balance)
+    """Pure summary calculation. Reusable from API endpoint and sync service."""
+    base_salary = config.base_salary
+    meal_allowance = config.meal_allowance
+    health = config.health_plan_deduction
+    dental = config.dental_plan_deduction
+    fgts = config.fgts_balance
+    coparticipation = config.coparticipation
 
-    hourly_rate = config.overtime_hour_rate
-    daily_rate = contractual_base_salary / DAYS_PER_MONTH
+    hourly_rate = base_salary / HOURS_PER_MONTH
+    daily_rate = base_salary / DAYS_PER_MONTH
 
     overtime_hours_total = Decimal("0")
     overtime_value = Decimal("0")
@@ -81,54 +48,60 @@ def compute_monthly_summary(
     late_value = Decimal("0")
     absence_days_total = 0
     absence_value = Decimal("0")
+    medical_certificate_days = 0
 
-    for entry in entries:
-        if entry.entry_type == "overtime" and entry.hours:
-            multiplier = entry.overtime_multiplier or Decimal("0")
-            overtime_hours_total += entry.hours
-            overtime_value += entry.hours * hourly_rate * (Decimal("1") + multiplier)
-        elif entry.entry_type == "refund" and entry.amount:
-            refunds_total += entry.amount
-        elif entry.entry_type == "late" and entry.hours:
-            late_hours_total += entry.hours
-            late_value += entry.hours * (contractual_base_salary / HOURS_PER_MONTH)
-        elif entry.entry_type == "absence" and entry.days:
-            absence_days_total += entry.days
-            absence_value += Decimal(entry.days) * daily_rate
+    for e in entries:
+        if e.entry_type == "overtime" and e.hours:
+            mult = e.overtime_multiplier or Decimal("0")
+            overtime_hours_total += e.hours
+            overtime_value += e.hours * hourly_rate * (Decimal("1") + mult)
+        elif e.entry_type == "refund" and e.amount:
+            refunds_total += e.amount
+        elif e.entry_type == "late" and e.hours:
+            late_hours_total += e.hours
+            late_value += e.hours * hourly_rate
+        elif e.entry_type == "absence" and e.days:
+            absence_days_total += e.days
+            absence_value += Decimal(e.days) * daily_rate
+        elif e.entry_type == "medical_certificate" and e.days:
+            medical_certificate_days += e.days
+            # No deduction — employer pays salary during atestado
 
-    overtime_value = money(overtime_value)
-    refunds_total = money(refunds_total)
-    late_value = money(late_value)
-    absence_value = money(absence_value)
-    discounts_absences_value = money(late_value + absence_value)
-    base_salary_due = money(max(contractual_base_salary - discounts_absences_value, Decimal("0")))
+    overtime_value = overtime_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    late_value = late_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    absence_value = absence_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    discounts_absences_value = (late_value + absence_value).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
-    inss_base = base_salary_due + overtime_value
-    inss = calculate_inss(inss_base, year)
-    irrf = calculate_irrf(
-        inss_base - inss,
-        year,
-        month,
-        monthly_gross=inss_base,
+    # INSS base = remuneração efetiva (salário base + horas extras - atrasos - faltas).
+    # Atestado médico NÃO reduz a base pois o empregador paga salário normal.
+    # Vale-refeição é excluído por lei; reembolsos também não entram na base.
+    inss_base = (base_salary + overtime_value - late_value - absence_value).quantize(
+        TWO_PLACES, rounding=ROUND_HALF_UP
     )
+    if inss_base < Decimal("0"):
+        inss_base = Decimal("0")
+    inss = calculate_inss(inss_base)
+    # IRRF base = INSS base - INSS (simplificado, sem dependentes)
+    irrf = calculate_irrf(inss_base - inss)
 
-    transport_voucher_value = Decimal("0.00")
+    transport_voucher_value = Decimal("0")
     if config.transport_voucher_enabled:
-        transport_voucher_value = money(
-            contractual_base_salary * config.transport_voucher_percent / Decimal("100")
-        )
+        transport_voucher_value = (
+            base_salary * config.transport_voucher_percent / Decimal("100")
+        ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
-    total_gross = money(base_salary_due + meal_allowance + overtime_value + refunds_total)
-    total_deductions = money(
-        inss + irrf + health + dental + transport_voucher_value
+    total_gross = (base_salary + meal_allowance + overtime_value + refunds_total).quantize(
+        TWO_PLACES, rounding=ROUND_HALF_UP
     )
-    net_salary = money(total_gross - total_deductions)
+    total_deductions = (
+        inss + irrf + health + dental + coparticipation + transport_voucher_value + discounts_absences_value
+    ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+    net_salary = (total_gross - total_deductions).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
     return MonthlySummaryOut(
         reference_month=month,
         reference_year=year,
-        base_salary_contractual=contractual_base_salary,
-        base_salary_due=base_salary_due,
+        base_salary=base_salary,
         meal_allowance=meal_allowance,
         overtime_hours_total=overtime_hours_total,
         overtime_value=overtime_value,
@@ -141,6 +114,8 @@ def compute_monthly_summary(
         health_plan_deduction=health,
         dental_plan_deduction=dental,
         transport_voucher_value=transport_voucher_value,
+        coparticipation=coparticipation,
+        medical_certificate_days=medical_certificate_days,
         inss=inss,
         irrf=irrf,
         total_gross=total_gross,
@@ -154,16 +129,19 @@ async def _ensure_salary_category(db: AsyncSession) -> Category:
     result = await db.execute(
         select(Category).where(Category.name == SALARY_CATEGORY_NAME, Category.type == "income")
     )
-    category = result.scalar_one_or_none()
-    if category:
-        return category
-    category = Category(name=SALARY_CATEGORY_NAME, type="income", icon="payments")
-    db.add(category)
+    cat = result.scalar_one_or_none()
+    if cat:
+        return cat
+    cat = Category(name=SALARY_CATEGORY_NAME, type="income", icon="payments")
+    db.add(cat)
     await db.flush()
-    return category
+    return cat
 
 
 async def _find_auto_transaction(db: AsyncSession, month: int, year: int) -> Transaction | None:
+    """Locate the auto-generated salary transaction for a given (month, year)."""
+    # Day 5 is the canonical date for the auto entry; match on the exact date
+    # to avoid colliding with manual income entries the user may add.
     target_date = date(year, month, 5)
     result = await db.execute(
         select(Transaction).where(
@@ -175,9 +153,31 @@ async def _find_auto_transaction(db: AsyncSession, month: int, year: int) -> Tra
 
 
 async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> None:
-    snapshot = await ensure_monthly_salary_snapshot(db, month, year)
-    if not snapshot:
-        return
+    """Upsert (or delete) the auto-generated salary transaction for the period.
+
+    Reads the latest SalaryConfig and all MonthlyEntries for the period, computes
+    the net salary via :func:`compute_monthly_summary`, then writes a single
+    Transaction row tagged with ``source="salary_auto"``.
+    """
+    # Try per-month config first
+    config_result = await db.execute(
+        select(SalaryConfig).where(
+            SalaryConfig.reference_month == month,
+            SalaryConfig.reference_year == year,
+        )
+    )
+    config = config_result.scalar_one_or_none()
+    if not config:
+        # Fall back to global (null month/year) or latest
+        config_result = await db.execute(
+            select(SalaryConfig)
+            .where(SalaryConfig.reference_month.is_(None))
+            .order_by(SalaryConfig.id.desc())
+            .limit(1)
+        )
+        config = config_result.scalar_one_or_none()
+    if not config:
+        return  # nothing to sync
 
     entries_result = await db.execute(
         select(MonthlyEntry).where(
@@ -186,7 +186,8 @@ async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> No
         )
     )
     entries = entries_result.scalars().all()
-    summary = compute_monthly_summary(snapshot, entries, month, year)
+
+    summary = compute_monthly_summary(config, entries, month, year)
     existing = await _find_auto_transaction(db, month, year)
 
     if summary.net_salary <= 0:
@@ -195,28 +196,21 @@ async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> No
             await db.commit()
         return
 
-    category = await _ensure_salary_category(db)
-    description = f"Salário líquido {month:02d}/{year}"
-    tx_date = date(year, month, 5)
     if existing:
-        existing.date = tx_date
         existing.amount = summary.net_salary
-        existing.description = description
-        existing.type = "income"
-        existing.category_id = category.id
-        existing.source = SALARY_AUTO_SOURCE
-        existing.icon = "payments"
+        existing.description = f"Salário líquido {month:02d}/{year}"
         await db.commit()
         return
 
-    transaction = Transaction(
-        date=tx_date,
-        description=description,
+    category = await _ensure_salary_category(db)
+    tx = Transaction(
+        date=date(year, month, 5),
+        description=f"Salário líquido {month:02d}/{year}",
         amount=summary.net_salary,
         type="income",
         category_id=category.id,
         source=SALARY_AUTO_SOURCE,
         icon="payments",
     )
-    db.add(transaction)
+    db.add(tx)
     await db.commit()

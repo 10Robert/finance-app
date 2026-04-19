@@ -33,7 +33,7 @@ export default function SettingsPage() {
   // ── Salary State ──
   const { data: salaryConfig } = useQuery({
     queryKey: ['salary-config'],
-    queryFn: getSalaryConfig,
+    queryFn: () => getSalaryConfig(),
   })
 
   const [salary, setSalary] = useState('')
