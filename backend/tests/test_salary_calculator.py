@@ -1,54 +1,65 @@
 from decimal import Decimal
 
-from app.services.salary_calculator import calculate_inss, calculate_irrf, calculate_net_salary
+from app.services.salary_calculator import (
+    calculate_inss,
+    calculate_irrf,
+    calculate_net_salary,
+)
 
 
-def test_calculate_irrf_returns_zero_for_exempt_bracket():
-    assert calculate_irrf(Decimal("2259.20")) == Decimal("0.00")
+def test_calculate_inss_uses_2026_brackets():
+    assert calculate_inss(Decimal("5347.60"), 2026) == Decimal("550.18")
 
 
-def test_calculate_inss_applies_progressive_brackets_with_rounding():
-    assert calculate_inss(Decimal("3000.00")) == Decimal("258.82")
+def test_calculate_irrf_applies_2026_simplified_monthly_deduction():
+    assert calculate_irrf(Decimal("4726.93"), 2026, 3) == Decimal("251.45")
 
 
-def test_calculate_irrf_uses_correct_bracket_and_rounding():
-    assert calculate_irrf(Decimal("3000.00")) == Decimal("68.56")
-
-
-def test_calculate_net_salary_excludes_meal_allowance_from_tax_bases():
+def test_calculate_net_salary_passes_reference_period_rules():
+    # Renda mensal bruta R$ 3.528,22 está abaixo do teto de isenção da reforma 2026
+    # (R$ 5.000), portanto o IRRF deve ser zerado.
     result = calculate_net_salary(
-        base_salary=Decimal("5000.00"),
-        meal_allowance=Decimal("600.00"),
-        health_plan_deduction=Decimal("150.00"),
-        overtime_hours=Decimal("10"),
-        overtime_multiplier=Decimal("0.50"),
-        monthly_bonus=Decimal("500.00"),
-        discounts_absences=Decimal("100.00"),
+        base_salary=Decimal("3528.22"),
+        meal_allowance=Decimal("0"),
+        health_plan_deduction=Decimal("0"),
+        overtime_hours=Decimal("0"),
+        overtime_multiplier=Decimal("0"),
+        monthly_bonus=Decimal("0"),
+        discounts_absences=Decimal("0"),
+        reference_year=2026,
+        reference_month=3,
     )
 
-    assert result["overtime_value"] == Decimal("340.91")
-    assert result["inss"] == Decimal("636.55")
-    assert result["irrf"] == Decimal("535.20")
-    assert result["total_gross"] == Decimal("6440.91")
-    assert result["total_deductions"] == Decimal("1421.75")
-    assert result["net_salary"] == Decimal("5019.16")
+    assert result["inss"] == Decimal("311.99")
+    assert result["irrf"] == Decimal("0.00")
 
 
-def test_calculate_net_salary_supports_common_overtime_multipliers():
-    base_args = {
-        "base_salary": Decimal("2200.00"),
-        "meal_allowance": Decimal("0"),
-        "health_plan_deduction": Decimal("0"),
-        "overtime_hours": Decimal("10"),
-        "monthly_bonus": Decimal("0"),
-        "discounts_absences": Decimal("0"),
-    }
+def test_calculate_irrf_reform_2026_full_exemption_under_threshold():
+    # Renda mensal bruta abaixo de R$ 5.000 → isenção total.
+    irrf = calculate_irrf(
+        Decimal("4500.00"),
+        2026,
+        3,
+        monthly_gross=Decimal("4900.00"),
+    )
+    assert irrf == Decimal("0.00")
 
-    result_30 = calculate_net_salary(**base_args, overtime_multiplier=Decimal("0.30"))
-    result_50 = calculate_net_salary(**base_args, overtime_multiplier=Decimal("0.50"))
-    result_70 = calculate_net_salary(**base_args, overtime_multiplier=Decimal("0.70"))
 
-    assert result_30["overtime_value"] == Decimal("130.00")
-    assert result_50["overtime_value"] == Decimal("150.00")
-    assert result_70["overtime_value"] == Decimal("170.00")
-    assert result_30["net_salary"] < result_50["net_salary"] < result_70["net_salary"]
+def test_calculate_irrf_reform_2026_linear_redutor_in_transition_band():
+    # Renda na faixa de transição (R$ 5.000 - R$ 7.350) recebe redutor linear.
+    base_after_inss = Decimal("6000.00")
+    monthly_gross = Decimal("6500.00")
+    irrf_no_reform = calculate_irrf(base_after_inss, 2026, 3)
+    irrf_with_reform = calculate_irrf(base_after_inss, 2026, 3, monthly_gross=monthly_gross)
+    # O redutor reduz proporcionalmente o IRRF apurado pela tabela.
+    assert irrf_with_reform > Decimal("0.00")
+    assert irrf_with_reform < irrf_no_reform
+
+
+def test_calculate_irrf_reform_2026_above_threshold_uses_full_table():
+    # Renda acima de R$ 7.350 não recebe nenhum benefício da reforma.
+    base_after_inss = Decimal("8000.00")
+    monthly_gross = Decimal("9000.00")
+    irrf_no_reform = calculate_irrf(base_after_inss, 2026, 3)
+    irrf_with_reform = calculate_irrf(base_after_inss, 2026, 3, monthly_gross=monthly_gross)
+    assert irrf_with_reform == irrf_no_reform

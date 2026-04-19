@@ -38,6 +38,8 @@ async def calculate_income(data: IncomeCalculateRequest, db: AsyncSession = Depe
         overtime_multiplier=data.overtime_multiplier,
         monthly_bonus=data.monthly_bonus,
         discounts_absences=data.discounts_absences,
+        reference_year=data.reference_year,
+        reference_month=data.reference_month,
     )
 
     return IncomeLaunchResponse(
@@ -60,6 +62,8 @@ async def launch_income(data: IncomeCalculateRequest, db: AsyncSession = Depends
         overtime_multiplier=data.overtime_multiplier,
         monthly_bonus=data.monthly_bonus,
         discounts_absences=data.discounts_absences,
+        reference_year=data.reference_year,
+        reference_month=data.reference_month,
     )
 
     # Check if income for this month/year already exists - update if so

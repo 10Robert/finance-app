@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Category, SalaryConfig
+from app.models import SalaryConfig
 
 
 @pytest.fixture(scope="session")
@@ -59,33 +59,17 @@ async def client(test_app) -> AsyncIterator[AsyncClient]:
 
 
 @pytest.fixture
-async def expense_category(session_factory: async_sessionmaker[AsyncSession]) -> Category:
-    async with session_factory() as session:
-        category = Category(name="Mercado", type="expense", icon="shopping_cart")
-        session.add(category)
-        await session.commit()
-        await session.refresh(category)
-        return category
-
-
-@pytest.fixture
-async def income_category(session_factory: async_sessionmaker[AsyncSession]) -> Category:
-    async with session_factory() as session:
-        category = Category(name="Salario", type="income", icon="payments")
-        session.add(category)
-        await session.commit()
-        await session.refresh(category)
-        return category
-
-
-@pytest.fixture
 async def salary_config(session_factory: async_sessionmaker[AsyncSession]) -> SalaryConfig:
     async with session_factory() as session:
         config = SalaryConfig(
             base_salary=5000,
-            overtime_hour_rate=25,
+            overtime_hour_rate=30,
             meal_allowance=600,
             health_plan_deduction=150,
+            dental_plan_deduction=50,
+            transport_voucher_enabled=True,
+            transport_voucher_percent=6,
+            fgts_balance=1000,
         )
         session.add(config)
         await session.commit()
