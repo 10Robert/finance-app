@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Category, MonthlyEntry, SalaryConfig, Transaction
 from app.schemas import MonthlySummaryOut
-from app.services.salary_calculator import calculate_inss, calculate_irrf
+from app.services.salary_calculator import (
+    calculate_dsr_on_overtime,
+    calculate_inss,
+    calculate_irrf,
+)
 
 TWO_PLACES = Decimal("0.01")
 HOURS_PER_MONTH = Decimal("220")
@@ -72,17 +76,28 @@ def compute_monthly_summary(
     absence_value = absence_value.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     discounts_absences_value = (late_value + absence_value).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
-    # INSS base = remuneração efetiva (salário base + horas extras - atrasos - faltas).
+    # DSR sobre HE — Súmula 172 TST + Lei 605/49.
+    dsr_value = calculate_dsr_on_overtime(overtime_value, month, year)
+
+    # INSS base = remuneração efetiva (salário base + horas extras + DSR/HE - atrasos - faltas).
     # Atestado médico NÃO reduz a base pois o empregador paga salário normal.
     # Vale-refeição é excluído por lei; reembolsos também não entram na base.
-    inss_base = (base_salary + overtime_value - late_value - absence_value).quantize(
+    inss_base = (base_salary + overtime_value + dsr_value - late_value - absence_value).quantize(
         TWO_PLACES, rounding=ROUND_HALF_UP
     )
     if inss_base < Decimal("0"):
         inss_base = Decimal("0")
     inss = calculate_inss(inss_base, year)
-    # IRRF base = INSS base - INSS (simplificado, sem dependentes)
-    irrf = calculate_irrf(inss_base - inss, year, month, monthly_gross=inss_base)
+    # IRRF: passa renda bruta + INSS para que calculate_irrf escolha entre
+    # Desconto Simplificado (R$ 607,20) e Tradicional (INSS+dependentes), aplicando
+    # o que for mais favorável ao contribuinte. Sem dependentes por padrão.
+    irrf = calculate_irrf(
+        inss_base - inss,
+        year,
+        month,
+        monthly_gross=inss_base,
+        inss=inss,
+    )
 
     transport_voucher_value = Decimal("0")
     if config.transport_voucher_enabled:
@@ -90,9 +105,9 @@ def compute_monthly_summary(
             base_salary * config.transport_voucher_percent / Decimal("100")
         ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
 
-    total_gross = (base_salary + meal_allowance + overtime_value + refunds_total).quantize(
-        TWO_PLACES, rounding=ROUND_HALF_UP
-    )
+    total_gross = (
+        base_salary + meal_allowance + overtime_value + dsr_value + refunds_total
+    ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
     total_deductions = (
         inss + irrf + health + dental + coparticipation + transport_voucher_value + discounts_absences_value
     ).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
@@ -105,6 +120,7 @@ def compute_monthly_summary(
         meal_allowance=meal_allowance,
         overtime_hours_total=overtime_hours_total,
         overtime_value=overtime_value,
+        dsr_value=dsr_value,
         refunds_total=refunds_total,
         late_hours_total=late_hours_total,
         late_value=late_value,

@@ -640,6 +640,20 @@ export default function SalaryPage() {
                     <span className="text-sm text-[#a1a1aa]">Horas Extras (+{overtimeTotalHours}h)</span>
                     <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.overtime_value))}</span>
                   </div>
+                  {Number(summary.dsr_value) > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-[#a1a1aa] flex items-center gap-1.5">
+                        DSR sobre HE
+                        <span
+                          className="material-symbols-outlined text-[#52525b] text-[14px]"
+                          title="Descanso Semanal Remunerado proporcional às horas extras (Súmula 172 TST). Calculado sobre domingos do mês."
+                        >
+                          info
+                        </span>
+                      </span>
+                      <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.dsr_value))}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-[#a1a1aa]">Reembolsos</span>
                     <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.refunds_total))}</span>

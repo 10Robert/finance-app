@@ -187,6 +187,7 @@ export interface Income {
   monthly_bonus: number
   discounts_absences: number
   overtime_value: number
+  dsr_value: number
   inss: number
   irrf: number
   total_gross: number
@@ -323,6 +324,7 @@ export interface MonthlySummary {
   meal_allowance: number
   overtime_hours_total: number
   overtime_value: number
+  dsr_value: number
   refunds_total: number
   late_hours_total: number
   late_value: number
