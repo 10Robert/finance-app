@@ -55,6 +55,10 @@ async def lifespan(app: FastAPI):
                 END IF;
             END$$
         """))
+        await conn.execute(text("""
+            ALTER TABLE incomes
+                ADD COLUMN IF NOT EXISTS dsr_value NUMERIC(12,2) NOT NULL DEFAULT 0
+        """))
         # Normalize legacy negative amounts: imports stored expenses as
         # negatives, but the canonical convention is positive amount + `type`.
         await conn.execute(text("""

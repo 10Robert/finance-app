@@ -303,6 +303,7 @@ class IncomeOut(BaseModel):
     monthly_bonus: Decimal
     discounts_absences: Decimal
     overtime_value: Decimal
+    dsr_value: Decimal = Decimal("0")
     inss: Decimal
     irrf: Decimal
     total_gross: Decimal
@@ -323,6 +324,7 @@ class IncomeLaunchResponse(BaseModel):
     monthly_bonus: Decimal
     discounts_absences: Decimal
     overtime_value: Decimal
+    dsr_value: Decimal = Decimal("0")
     inss: Decimal
     irrf: Decimal
     total_gross: Decimal
@@ -442,6 +444,7 @@ class MonthlySummaryOut(BaseModel):
     meal_allowance: Decimal
     overtime_hours_total: Decimal
     overtime_value: Decimal
+    dsr_value: Decimal = Decimal("0")
     refunds_total: Decimal
     late_hours_total: Decimal
     late_value: Decimal

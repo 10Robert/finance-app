@@ -207,6 +207,7 @@ class Income(Base):
     monthly_bonus: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     discounts_absences: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     overtime_value: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    dsr_value: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
     inss: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     irrf: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     total_gross: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
