@@ -1,7 +1,8 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  LineChart, Line,
 } from 'recharts'
 import {
   getCreditCards,
@@ -18,6 +19,10 @@ import {
   getCreditCardBill,
   getCreditCardSubscriptions,
   getCreditCardByCategory,
+  getCreditCardByType,
+  getCreditCardDailySpend,
+  importCreditCardPdf,
+  bulkCreateCreditCardExpenses,
   getCategories,
 } from '../api/client'
 import type {
@@ -25,7 +30,11 @@ import type {
   CreditCardCreate,
   CreditCardBillItem,
   CreditCardExpense,
+  CreditCardImportPreviewItem,
+  Category as CategoryType,
 } from '../types'
+
+type PeriodMode = 'annual' | 'monthly'
 
 const PT_MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -62,6 +71,8 @@ export default function CreditCardsPage() {
   const qc = useQueryClient()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
+  const [mode, setMode] = useState<PeriodMode>('annual')
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
 
   /* ── data ── */
   const { data: cards = [] } = useQuery({ queryKey: ['cc-cards'], queryFn: getCreditCards })
@@ -78,9 +89,24 @@ export default function CreditCardsPage() {
     queryKey: ['cc-subscriptions'],
     queryFn: getCreditCardSubscriptions,
   })
+  const byCategoryParams = mode === 'monthly' ? { year, month: selectedMonth } : { year }
   const { data: byCategory = [] } = useQuery({
-    queryKey: ['cc-by-category', year],
-    queryFn: () => getCreditCardByCategory(year),
+    queryKey: ['cc-by-category', year, mode === 'monthly' ? selectedMonth : 'all'],
+    queryFn: () => getCreditCardByCategory(byCategoryParams),
+  })
+  const { data: byType } = useQuery({
+    queryKey: ['cc-by-type', year],
+    queryFn: () => getCreditCardByType(year),
+  })
+  const { data: dailySpend = [] } = useQuery({
+    queryKey: ['cc-daily', year, selectedMonth],
+    queryFn: () => getCreditCardDailySpend(year, selectedMonth),
+    enabled: mode === 'monthly',
+  })
+  const { data: monthBill = [] } = useQuery({
+    queryKey: ['cc-bill', year, selectedMonth],
+    queryFn: () => getCreditCardBill(year, selectedMonth),
+    enabled: mode === 'monthly',
   })
   const { data: allExpenses = [] } = useQuery({
     queryKey: ['cc-expenses'],
@@ -95,6 +121,8 @@ export default function CreditCardsPage() {
   const [cardFormOpen, setCardFormOpen] = useState(false)
   const [cardEdit, setCardEdit] = useState<CreditCard | null>(null)
   const [billOpen, setBillOpen] = useState<{ year: number; month: number } | null>(null)
+  const [pdfImportOpen, setPdfImportOpen] = useState(false)
+  const [allExpensesOpen, setAllExpensesOpen] = useState(false)
 
   /* ── invalidate helper ── */
   const invalidateAll = () => {
@@ -102,6 +130,8 @@ export default function CreditCardsPage() {
     qc.invalidateQueries({ queryKey: ['cc-bill-months'] })
     qc.invalidateQueries({ queryKey: ['cc-subscriptions'] })
     qc.invalidateQueries({ queryKey: ['cc-by-category'] })
+    qc.invalidateQueries({ queryKey: ['cc-by-type'] })
+    qc.invalidateQueries({ queryKey: ['cc-daily'] })
     qc.invalidateQueries({ queryKey: ['cc-expenses'] })
     qc.invalidateQueries({ queryKey: ['cc-bill'] })
     // Also invalidate global expense queries because mirrors changed.
@@ -121,9 +151,43 @@ export default function CreditCardsPage() {
       monthSummaries.map((m) => ({
         label: PT_MONTHS_SHORT[m.bill_month - 1],
         value: Number(m.total),
+        installment: Number(m.installment_total),
+        subscription: Number(m.subscription_total),
+        oneTime: Number(m.one_time_total),
       })),
     [monthSummaries],
   )
+
+  /* ── carousel scroll (drag + arrows) ── */
+  const carouselRef = useRef<HTMLDivElement | null>(null)
+  const drag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false })
+  const onCarouselDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!carouselRef.current) return
+    drag.current = {
+      active: true,
+      startX: e.pageX - carouselRef.current.offsetLeft,
+      scrollLeft: carouselRef.current.scrollLeft,
+      moved: false,
+    }
+    carouselRef.current.style.cursor = 'grabbing'
+  }
+  const onCarouselMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!drag.current.active || !carouselRef.current) return
+    const x = e.pageX - carouselRef.current.offsetLeft
+    const dx = x - drag.current.startX
+    if (Math.abs(dx) > 4) drag.current.moved = true
+    carouselRef.current.scrollLeft = drag.current.scrollLeft - dx
+  }
+  const onCarouselUp = () => {
+    drag.current.active = false
+    if (carouselRef.current) carouselRef.current.style.cursor = 'grab'
+  }
+  const scrollCarousel = (dir: 1 | -1) => {
+    if (!carouselRef.current) return
+    carouselRef.current.scrollBy({ left: dir * 220, behavior: 'smooth' })
+  }
+
+  const selectedSummary = monthSummaries.find((m) => m.bill_month === selectedMonth)
 
   const recentExpenses = useMemo(
     () => allExpenses.slice(0, 8),
@@ -133,87 +197,248 @@ export default function CreditCardsPage() {
   return (
     <div className="space-y-8">
       {/* Header / year selector */}
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-on-surface">Cartão de Crédito</h1>
           <p className="text-sm text-on-surface-variant mt-1">
             Gerencie cartões, faturas, parcelas e assinaturas
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setYear(year - 1)}
-            className="w-10 h-10 rounded-lg border border-outline-variant hover:bg-surface-container-high"
-          >
-            <span className="material-symbols-outlined text-on-surface-variant">chevron_left</span>
-          </button>
-          <span className="text-on-surface font-medium px-3">{year}</span>
-          <button
-            onClick={() => setYear(year + 1)}
-            className="w-10 h-10 rounded-lg border border-outline-variant hover:bg-surface-container-high"
-          >
-            <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
-          </button>
+        <div className="flex items-center gap-3">
+          {/* Period filter */}
+          <div className="flex border border-outline-variant rounded-lg overflow-hidden">
+            <button
+              onClick={() => setMode('annual')}
+              className={`px-4 py-2 text-sm transition-colors ${
+                mode === 'annual'
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+              }`}
+            >
+              Anual
+            </button>
+            <button
+              onClick={() => setMode('monthly')}
+              className={`px-4 py-2 text-sm transition-colors ${
+                mode === 'monthly'
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+              }`}
+            >
+              Mensal
+            </button>
+          </div>
+
+          {/* Month picker (monthly mode only) */}
+          {mode === 'monthly' && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="px-3 py-2 text-sm rounded-lg border border-outline-variant bg-surface-container text-on-surface"
+            >
+              {PT_MONTHS.map((m, i) => (
+                <option key={i + 1} value={i + 1}>{m}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Year nav */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setYear(year - 1)}
+              className="w-10 h-10 rounded-lg border border-outline-variant hover:bg-surface-container-high"
+            >
+              <span className="material-symbols-outlined text-on-surface-variant">chevron_left</span>
+            </button>
+            <span className="text-on-surface font-medium px-3">{year}</span>
+            <button
+              onClick={() => setYear(year + 1)}
+              className="w-10 h-10 rounded-lg border border-outline-variant hover:bg-surface-container-high"
+            >
+              <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Resumo Mensal */}
-      <section>
-        <h2 className="text-base font-medium text-on-surface mb-4">Resumo Mensal</h2>
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-          {monthSummaries.map((m, i) => {
-            const isCurrent = i === currentMonthIdx
-            const isFuture = year > now.getFullYear() || (year === now.getFullYear() && m.bill_month > now.getMonth() + 1)
-            const isEmpty = m.item_count === 0
-            return (
+      {/* Annual mode: Resumo Mensal + line chart below */}
+      {mode === 'annual' && (
+        <section>
+          <header className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-medium text-on-surface">Resumo Mensal</h2>
+            <div className="flex items-center gap-2">
               <button
-                key={m.bill_month}
-                onClick={() => setBillOpen({ year: m.bill_year, month: m.bill_month })}
-                className={`flex-shrink-0 w-44 text-left rounded-xl border p-4 transition-all ${
-                  isCurrent
-                    ? 'bg-primary text-on-primary border-primary'
-                    : 'bg-surface-container border-outline-variant hover:border-primary/50'
-                }`}
+                onClick={() => scrollCarousel(-1)}
+                className="w-9 h-9 rounded-lg border border-outline-variant hover:bg-surface-container-high"
+                aria-label="Anterior"
               >
-                <p className={`text-xs ${isCurrent ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
-                  {PT_MONTHS[m.bill_month - 1]}
+                <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_left</span>
+              </button>
+              <button
+                onClick={() => scrollCarousel(1)}
+                className="w-9 h-9 rounded-lg border border-outline-variant hover:bg-surface-container-high"
+                aria-label="Próximo"
+              >
+                <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_right</span>
+              </button>
+            </div>
+          </header>
+          <div
+            ref={carouselRef}
+            onMouseDown={onCarouselDown}
+            onMouseMove={onCarouselMove}
+            onMouseUp={onCarouselUp}
+            onMouseLeave={onCarouselUp}
+            className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 select-none cc-carousel"
+            style={{ cursor: 'grab', scrollbarWidth: 'thin' }}
+          >
+            {monthSummaries.map((m, i) => {
+              const isCurrent = i === currentMonthIdx
+              const isFuture = year > now.getFullYear() || (year === now.getFullYear() && m.bill_month > now.getMonth() + 1)
+              const isEmpty = m.item_count === 0
+              return (
+                <button
+                  key={m.bill_month}
+                  onClick={(e) => {
+                    if (drag.current.moved) { e.preventDefault(); return }
+                    setBillOpen({ year: m.bill_year, month: m.bill_month })
+                  }}
+                  className={`flex-shrink-0 w-44 text-left rounded-xl border p-4 transition-all ${
+                    isCurrent
+                      ? 'bg-primary text-on-primary border-primary'
+                      : 'bg-surface-container border-outline-variant hover:border-primary/50'
+                  }`}
+                >
+                  <p className={`text-xs ${isCurrent ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
+                    {PT_MONTHS[m.bill_month - 1]}
+                  </p>
+                  <p className={`text-xl font-semibold mt-1 ${isCurrent ? 'text-on-primary' : 'text-on-surface'}`}>
+                    {fmt(Number(m.total))}
+                  </p>
+                  <p className={`text-[11px] mt-2 flex items-center gap-1 ${isCurrent ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
+                    {isEmpty ? (
+                      <>
+                        <span className="material-symbols-outlined text-sm">lock</span>
+                        {isFuture ? 'Não iniciado' : '—'}
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-sm">receipt_long</span>
+                        {m.item_count} item{m.item_count !== 1 ? 's' : ''}
+                      </>
+                    )}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Line chart of monthly totals */}
+          <div className="mt-6 bg-surface-container border border-outline-variant rounded-xl p-5">
+            <h3 className="text-sm font-medium text-on-surface mb-3">Evolução mensal</h3>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={annualChartData}>
+                  <CartesianGrid stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                    formatter={(v: number) => fmt(v)}
+                    labelStyle={{ color: '#fafafa' }}
+                  />
+                  <Line type="monotone" dataKey="value" stroke="#a78bfa" strokeWidth={2} dot={{ fill: '#a78bfa', r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Monthly mode: single big card + line chart + ações */}
+      {mode === 'monthly' && (
+        <section className="space-y-6">
+          <div className="bg-surface-container border border-outline-variant rounded-xl p-6">
+            <div className="flex items-start justify-between flex-wrap gap-4">
+              <div>
+                <p className="text-xs text-on-surface-variant uppercase tracking-wide">
+                  {PT_MONTHS[selectedMonth - 1]} {year}
                 </p>
-                <p className={`text-xl font-semibold mt-1 ${isCurrent ? 'text-on-primary' : 'text-on-surface'}`}>
-                  {fmt(Number(m.total))}
+                <p className="text-3xl font-semibold text-on-surface mt-1">
+                  {fmt(Number(selectedSummary?.total || 0))}
                 </p>
-                <p className={`text-[11px] mt-2 flex items-center gap-1 ${isCurrent ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
-                  {isEmpty ? (
-                    <>
-                      <span className="material-symbols-outlined text-sm">lock</span>
-                      {isFuture ? 'Não iniciado' : '—'}
-                    </>
-                  ) : (
-                    <>
-                      <span className="material-symbols-outlined text-sm">receipt_long</span>
-                      {m.item_count} item{m.item_count !== 1 ? 's' : ''}
-                    </>
+                <p className="text-xs text-on-surface-variant mt-2">
+                  {selectedSummary?.item_count || 0} lançamento{(selectedSummary?.item_count || 0) !== 1 ? 's' : ''}
+                  {Number(selectedSummary?.refunded_total || 0) > 0 && (
+                    <span className="text-tertiary ml-2">
+                      · {fmt(Number(selectedSummary!.refunded_total))} reembolsado
+                    </span>
                   )}
                 </p>
-              </button>
-            )
-          })}
-        </div>
-      </section>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAllExpensesOpen(true)}
+                  className="px-4 py-2 text-sm rounded-lg border border-primary text-primary hover:bg-primary/10 flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-base">list</span>
+                  Ver todos os gastos
+                </button>
+                <button
+                  onClick={() => setBillOpen({ year, month: selectedMonth })}
+                  className="px-4 py-2 text-sm rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-base">edit</span>
+                  Editar fatura
+                </button>
+              </div>
+            </div>
+
+            {/* Daily line chart for the selected month */}
+            <div className="h-48 mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dailySpend.map((d) => ({ label: String(d.day).padStart(2, '0'), value: Number(d.total) }))}>
+                  <CartesianGrid stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 11 }} tickFormatter={fmtShort} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                    formatter={(v: number) => fmt(v)}
+                    labelStyle={{ color: '#fafafa' }}
+                  />
+                  <Line type="monotone" dataKey="value" stroke="#a78bfa" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Two-column area */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* LEFT — Cartões */}
         <div className="lg:col-span-3 space-y-6">
           <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <header className="flex items-center justify-between mb-4">
+            <header className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="text-base font-medium text-on-surface">Meus Cartões</h2>
-              <button
-                onClick={() => { setCardEdit(null); setCardFormOpen(true) }}
-                className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-primary text-primary hover:bg-primary/10"
-              >
-                <span className="material-symbols-outlined text-base">add</span>
-                Cadastrar Novo Cartão
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPdfImportOpen(true)}
+                  disabled={cards.length === 0}
+                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50"
+                  title={cards.length === 0 ? 'Cadastre um cartão primeiro' : ''}
+                >
+                  <span className="material-symbols-outlined text-base">upload_file</span>
+                  Importar Fatura PDF
+                </button>
+                <button
+                  onClick={() => { setCardEdit(null); setCardFormOpen(true) }}
+                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-primary text-primary hover:bg-primary/10"
+                >
+                  <span className="material-symbols-outlined text-base">add</span>
+                  Cadastrar Novo Cartão
+                </button>
+              </div>
             </header>
             <div className="space-y-3">
               {cards.length === 0 && (
@@ -365,58 +590,177 @@ export default function CreditCardsPage() {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-          <h2 className="text-base font-medium text-on-surface mb-4">Gasto Anual ({year})</h2>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={annualChartData}>
-                <CartesianGrid stroke="#27272a" vertical={false} />
-                <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
-                <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                  formatter={(v: number) => fmt(v)}
-                  labelStyle={{ color: '#fafafa' }}
-                />
-                <Bar dataKey="value" fill="#a78bfa" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-          <h2 className="text-base font-medium text-on-surface mb-4">Por Categoria ({year})</h2>
-          <div className="h-64">
-            {byCategory.length === 0 ? (
-              <p className="text-sm text-on-surface-variant text-center pt-20">Sem dados.</p>
-            ) : (
+      {mode === 'annual' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
+            <h2 className="text-base font-medium text-on-surface mb-4">
+              Gasto Anual por Tipo ({year})
+            </h2>
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={byCategory.map((c) => ({ name: c.category_name, value: Number(c.total) }))}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {byCategory.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
+                <BarChart data={annualChartData}>
+                  <CartesianGrid stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
                     formatter={(v: number) => fmt(v)}
+                    labelStyle={{ color: '#fafafa' }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
-                </PieChart>
+                  <Bar dataKey="oneTime" stackId="a" fill="#3b82f6" name="Avulsos" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="installment" stackId="a" fill="#a78bfa" name="Parcelados" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="subscription" stackId="a" fill="#34d399" name="Assinaturas" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
+            </div>
+          </section>
+
+          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
+            <h2 className="text-base font-medium text-on-surface mb-4">Por Categoria ({year})</h2>
+            <div className="h-64">
+              {byCategory.length === 0 ? (
+                <p className="text-sm text-on-surface-variant text-center pt-20">Sem dados.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={byCategory.map((c) => ({ name: c.category_name, value: Number(c.total) }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {byCategory.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                      formatter={(v: number) => fmt(v)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </section>
+
+          {/* Subscription vs installment vs one-time pie */}
+          <section className="bg-surface-container border border-outline-variant rounded-xl p-5 lg:col-span-2">
+            <h2 className="text-base font-medium text-on-surface mb-4">
+              Assinaturas vs Parcelas Fixas vs Avulsos ({year})
+            </h2>
+            {byType && (Number(byType.subscription_total) + Number(byType.installment_total) + Number(byType.one_time_total)) > 0 ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Assinaturas', value: Number(byType.subscription_total) },
+                        { name: 'Parcelas Fixas', value: Number(byType.installment_total) },
+                        { name: 'Avulsos', value: Number(byType.one_time_total) },
+                      ].filter((d) => d.value > 0)}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={(e: { name: string; percent: number }) => `${e.name} ${(e.percent * 100).toFixed(0)}%`}
+                    >
+                      <Cell fill="#34d399" />
+                      <Cell fill="#a78bfa" />
+                      <Cell fill="#3b82f6" />
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                      formatter={(v: number) => fmt(v)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="text-sm text-on-surface-variant text-center py-12">Sem dados.</p>
             )}
-          </div>
-        </section>
-      </div>
+          </section>
+        </div>
+      )}
+
+      {/* Monthly mode charts */}
+      {mode === 'monthly' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
+            <h2 className="text-base font-medium text-on-surface mb-4">
+              Por Categoria ({PT_MONTHS[selectedMonth - 1]})
+            </h2>
+            <div className="h-64">
+              {byCategory.length === 0 ? (
+                <p className="text-sm text-on-surface-variant text-center pt-20">Sem dados.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={byCategory.map((c) => ({ name: c.category_name, value: Number(c.total) }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {byCategory.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                      formatter={(v: number) => fmt(v)}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </section>
+
+          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
+            <h2 className="text-base font-medium text-on-surface mb-4">
+              Composição da Fatura ({PT_MONTHS[selectedMonth - 1]})
+            </h2>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={[
+                    {
+                      label: PT_MONTHS_SHORT[selectedMonth - 1],
+                      Parcelados: Number(selectedSummary?.installment_total || 0),
+                      Avulsos: Number(selectedSummary?.one_time_total || 0),
+                      Assinaturas: Number(selectedSummary?.subscription_total || 0),
+                    },
+                  ]}
+                >
+                  <CartesianGrid stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
+                    formatter={(v: number) => fmt(v)}
+                    labelStyle={{ color: '#fafafa' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
+                  <Bar dataKey="Avulsos" stackId="a" fill="#3b82f6" />
+                  <Bar dataKey="Parcelados" stackId="a" fill="#a78bfa" />
+                  <Bar dataKey="Assinaturas" stackId="a" fill="#34d399" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Modals */}
       {cardFormOpen && (
@@ -433,6 +777,23 @@ export default function CreditCardsPage() {
           month={billOpen.month}
           onClose={() => setBillOpen(null)}
           onChanged={invalidateAll}
+        />
+      )}
+      {pdfImportOpen && (
+        <PdfImportModal
+          cards={cards}
+          categories={expenseCategories}
+          onClose={() => setPdfImportOpen(false)}
+          onDone={() => { setPdfImportOpen(false); invalidateAll() }}
+        />
+      )}
+      {allExpensesOpen && (
+        <AllExpensesModal
+          items={[...monthBill].sort(
+            (a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime(),
+          )}
+          monthLabel={`${PT_MONTHS[selectedMonth - 1]} ${year}`}
+          onClose={() => setAllExpensesOpen(false)}
         />
       )}
     </div>
@@ -1146,5 +1507,251 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label className="text-xs uppercase tracking-wide text-on-surface-variant block mb-1.5">{label}</label>
       {children}
     </div>
+  )
+}
+
+/* ─── PDF Import modal ────────────────────────────────────────────────── */
+
+function PdfImportModal({
+  cards, categories, onClose, onDone,
+}: {
+  cards: CreditCard[]
+  categories: CategoryType[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [cardId, setCardId] = useState<number>(cards[0]?.id ?? 0)
+  const [file, setFile] = useState<File | null>(null)
+  const [items, setItems] = useState<CreditCardImportPreviewItem[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const parse = useMutation({
+    mutationFn: () => importCreditCardPdf(cardId, file!),
+    onSuccess: (data) => setItems(data.items),
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setError(e?.response?.data?.detail || 'Erro ao processar o PDF')
+    },
+  })
+
+  const confirm = useMutation({
+    mutationFn: () => bulkCreateCreditCardExpenses({
+      credit_card_id: cardId,
+      items: (items || []).map((it) => ({
+        description: it.description,
+        amount: Number(it.amount),
+        purchase_date: it.purchase_date,
+        category_id: it.suggested_category_id ?? null,
+        installment_count: 1,
+      })),
+    }),
+    onSuccess: onDone,
+  })
+
+  const totalParsed = items?.reduce((acc, i) => acc + Number(i.amount), 0) || 0
+
+  if (items === null) {
+    return (
+      <Modal onClose={onClose} title="Importar Fatura PDF" width="md">
+        <div className="space-y-4">
+          <Field label="Cartão">
+            <select
+              value={cardId}
+              onChange={(e) => setCardId(Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {cards.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Arquivo PDF">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="w-full text-sm text-on-surface-variant file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border file:border-outline-variant file:bg-surface-container-low file:text-on-surface file:hover:bg-surface-container-high file:cursor-pointer"
+            />
+          </Field>
+          <p className="text-xs text-on-surface-variant">
+            A fatura será analisada pela IA. Você poderá revisar e ajustar antes de confirmar a importação.
+          </p>
+          {error && <p className="text-sm text-error">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => { setError(null); parse.mutate() }}
+              disabled={!file || !cardId || parse.isPending}
+              className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
+              {parse.isPending ? 'Processando...' : 'Analisar PDF'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <Modal onClose={onClose} title={`Revisão da Importação (${items.length} itens)`} width="lg">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-container-low border border-outline-variant">
+          <p className="text-sm text-on-surface-variant">Total identificado</p>
+          <p className="text-lg font-semibold text-on-surface">{fmt(totalParsed)}</p>
+        </div>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {items.length === 0 && (
+            <p className="text-sm text-on-surface-variant text-center py-8">
+              Nenhuma transação foi identificada no PDF.
+            </p>
+          )}
+          {items.map((it, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant bg-surface-container-low"
+            >
+              <input
+                type="date"
+                value={it.purchase_date}
+                onChange={(e) => {
+                  const next = [...items]; next[i] = { ...it, purchase_date: e.target.value }; setItems(next)
+                }}
+                className="w-36 px-2 py-1 text-xs rounded bg-bg border border-outline-variant text-on-surface"
+              />
+              <input
+                type="text"
+                value={it.description}
+                onChange={(e) => {
+                  const next = [...items]; next[i] = { ...it, description: e.target.value }; setItems(next)
+                }}
+                className="flex-1 px-2 py-1 text-sm rounded bg-bg border border-outline-variant text-on-surface min-w-0"
+              />
+              <select
+                value={it.suggested_category_id ?? ''}
+                onChange={(e) => {
+                  const next = [...items]
+                  next[i] = { ...it, suggested_category_id: e.target.value ? Number(e.target.value) : null }
+                  setItems(next)
+                }}
+                className="w-36 px-2 py-1 text-xs rounded bg-bg border border-outline-variant text-on-surface"
+              >
+                <option value="">Sem categoria</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                step="0.01"
+                value={it.amount}
+                onChange={(e) => {
+                  const next = [...items]; next[i] = { ...it, amount: Number(e.target.value) }; setItems(next)
+                }}
+                className="w-24 px-2 py-1 text-sm rounded bg-bg border border-outline-variant text-on-surface text-right"
+              />
+              <button
+                onClick={() => setItems(items.filter((_, j) => j !== i))}
+                className="text-on-surface-variant hover:text-error"
+                title="Remover"
+              >
+                <span className="material-symbols-outlined text-base">delete</span>
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between gap-2 pt-2">
+          <button
+            onClick={() => setItems(null)}
+            className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+          >
+            Voltar
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => confirm.mutate()}
+              disabled={items.length === 0 || confirm.isPending}
+              className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
+              {confirm.isPending ? 'Importando...' : `Importar ${items.length} gasto${items.length !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/* ─── All expenses (monthly) modal ─────────────────────────────────────── */
+
+function AllExpensesModal({
+  items, monthLabel, onClose,
+}: {
+  items: CreditCardBillItem[]
+  monthLabel: string
+  onClose: () => void
+}) {
+  const total = items.filter((i) => !i.is_refunded).reduce((acc, i) => acc + Number(i.amount), 0)
+  return (
+    <Modal onClose={onClose} title={`Gastos de ${monthLabel}`} width="lg">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-container-low border border-outline-variant">
+          <p className="text-sm text-on-surface-variant">{items.length} lançamento{items.length !== 1 ? 's' : ''}</p>
+          <p className="text-lg font-semibold text-on-surface">{fmt(total)}</p>
+        </div>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {items.length === 0 && (
+            <p className="text-sm text-on-surface-variant text-center py-8">Sem lançamentos.</p>
+          )}
+          {items.map((item) => (
+            <div
+              key={item.installment_id}
+              className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant bg-surface-container-low"
+            >
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: item.card_color + '33' }}
+              >
+                <span className="material-symbols-outlined text-sm" style={{ color: item.card_color }}>
+                  {item.category_icon || 'receipt_long'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className={`font-medium truncate text-sm ${item.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
+                    {item.description}
+                  </p>
+                  {item.is_subscription && (
+                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-tertiary/20 text-tertiary">
+                      assinatura
+                    </span>
+                  )}
+                  {item.installment_count > 1 && (
+                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+                      {item.installment_number}/{item.installment_count}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  {new Date(item.purchase_date + 'T00:00:00').toLocaleDateString('pt-BR')} · {item.card_name} · {item.category_name || 'Sem categoria'}
+                </p>
+              </div>
+              <p className={`font-medium whitespace-nowrap text-sm ${item.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
+                {fmt(Number(item.amount))}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Modal>
   )
 }

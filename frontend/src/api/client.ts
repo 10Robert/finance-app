@@ -242,6 +242,9 @@ import type {
   CreditCardExpenseCreate,
   CreditCardBillItem,
   CreditCardMonthSummary,
+  CreditCardDailySpend,
+  CreditCardByType,
+  CreditCardImportPreviewItem,
 } from '../types'
 
 export const getCreditCards = () =>
@@ -290,13 +293,43 @@ export const getCreditCardBill = (year: number, month: number) =>
 export const getCreditCardSubscriptions = () =>
   api.get<CreditCardExpense[]>('/credit-cards/subscriptions').then((r) => r.data)
 
-export const getCreditCardByCategory = (year: number) =>
+export const getCreditCardByCategory = (params: { year: number; month?: number }) =>
   api
     .get<{ category_name: string; category_icon: string | null; total: number }[]>(
       '/credit-cards/analytics/by-category',
-      { params: { year } },
+      { params },
     )
     .then((r) => r.data)
+
+export const getCreditCardByType = (year: number) =>
+  api.get<CreditCardByType>('/credit-cards/analytics/by-type', { params: { year } }).then((r) => r.data)
+
+export const getCreditCardDailySpend = (year: number, month: number) =>
+  api
+    .get<CreditCardDailySpend[]>(`/credit-cards/analytics/daily/${year}/${month}`)
+    .then((r) => r.data)
+
+export const importCreditCardPdf = (cardId: number, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api
+    .post<{ items: CreditCardImportPreviewItem[]; card_id: number }>(
+      `/credit-cards/import-pdf/parse?card_id=${cardId}`,
+      form,
+    )
+    .then((r) => r.data)
+}
+
+export const bulkCreateCreditCardExpenses = (data: {
+  credit_card_id: number
+  items: {
+    description: string
+    amount: number
+    purchase_date: string
+    category_id?: number | null
+    installment_count?: number
+  }[]
+}) => api.post<CreditCardExpense[]>('/credit-cards/expenses/bulk', data).then((r) => r.data)
 
 // JSON Import
 export const importTransactionsJson = (transactions: Record<string, unknown>[]) =>

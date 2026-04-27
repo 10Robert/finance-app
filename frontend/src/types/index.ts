@@ -385,6 +385,28 @@ export interface CreditCardMonthSummary {
   total: number
   refunded_total: number
   item_count: number
+  installment_total: number
+  subscription_total: number
+  one_time_total: number
+}
+
+export interface CreditCardDailySpend {
+  day: number
+  total: number
+}
+
+export interface CreditCardByType {
+  subscription_total: number
+  installment_total: number
+  one_time_total: number
+}
+
+export interface CreditCardImportPreviewItem {
+  purchase_date: string
+  description: string
+  amount: number
+  suggested_category_id: number | null
+  suggested_category_name: string | null
 }
 
 // Monthly Entries (overtime / refund / late / absence / medical certificate launches)

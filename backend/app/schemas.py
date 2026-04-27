@@ -559,11 +559,41 @@ class CreditCardMonthSummaryOut(BaseModel):
     total: Decimal  # excludes refunded
     refunded_total: Decimal
     item_count: int
+    installment_total: Decimal = Decimal("0")  # parcelas (installment_count > 1)
+    subscription_total: Decimal = Decimal("0")  # assinaturas
+    one_time_total: Decimal = Decimal("0")  # avulsos
 
 
 class AnticipateInstallmentRequest(BaseModel):
     target_month: int  # 1-12
     target_year: int
+
+
+class CreditCardDailySpendOut(BaseModel):
+    day: int
+    total: Decimal
+
+
+class CreditCardImportPdfPreviewItem(BaseModel):
+    """A single transaction extracted from a PDF for review."""
+    purchase_date: Date
+    description: str
+    amount: Decimal
+    suggested_category_id: Optional[int] = None
+    suggested_category_name: Optional[str] = None
+
+
+class CreditCardBulkCreateItem(BaseModel):
+    description: str
+    amount: Decimal
+    purchase_date: Date
+    category_id: Optional[int] = None
+    installment_count: int = 1
+
+
+class CreditCardBulkCreate(BaseModel):
+    credit_card_id: int
+    items: list[CreditCardBulkCreateItem]
 
 
 class MonthlySummaryOut(BaseModel):
