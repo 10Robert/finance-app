@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import calendar
+import shutil
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import (
+    Category,
     CreditCard,
     CreditCardExpense,
     CreditCardInstallment,
@@ -26,8 +29,11 @@ from app.schemas import (
     CreditCardExpenseOut,
     CreditCardBillItemOut,
     CreditCardMonthSummaryOut,
+    CreditCardDailySpendOut,
+    CreditCardBulkCreate,
     AnticipateInstallmentRequest,
 )
+from app.services import parser_service, llm_service
 
 router = APIRouter()
 
@@ -144,7 +150,11 @@ async def _generate_installments(
 
 
 async def _used_amount(card_id: int, db: AsyncSession) -> Decimal:
-    """Sum of unpaid (current-or-future bill) installments, excluding refunded."""
+    """Sum of unpaid (current-or-future bill) installments, excluding refunded.
+
+    Subscriptions are excluded — they recur monthly and don't reserve credit
+    against the global limit, only count toward the current bill.
+    """
     today = date.today()
     cur_year, cur_month = today.year, today.month
     result = await db.execute(
@@ -153,6 +163,7 @@ async def _used_amount(card_id: int, db: AsyncSession) -> Decimal:
         .where(
             CreditCardInstallment.credit_card_id == card_id,
             CreditCardExpense.is_refunded.is_(False),
+            CreditCardExpense.is_subscription.is_(False),
             (
                 (CreditCardInstallment.bill_year > cur_year)
                 | (
@@ -435,44 +446,83 @@ async def list_bill_months(
     """Totals for each bill month of the given year (jan..dec).
 
     Refunded expenses are excluded from `total` and shown in `refunded_total`.
+    Also returns breakdown by type: installment / subscription / one_time.
     """
-    out: list[CreditCardMonthSummaryOut] = []
-    for m in range(1, 13):
-        # Active total
-        total_q = await db.execute(
-            select(func.coalesce(func.sum(CreditCardInstallment.amount), 0))
-            .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
-            .where(
-                CreditCardInstallment.bill_year == year,
-                CreditCardInstallment.bill_month == m,
-                CreditCardExpense.is_refunded.is_(False),
-            )
+    # Load all rows once and group in memory — avoids 60+ round-trips per call.
+    rows_q = await db.execute(
+        select(
+            CreditCardInstallment.bill_month,
+            CreditCardInstallment.amount,
+            CreditCardExpense.is_refunded,
+            CreditCardExpense.is_subscription,
+            CreditCardExpense.installment_count,
         )
-        refunded_q = await db.execute(
-            select(func.coalesce(func.sum(CreditCardInstallment.amount), 0))
-            .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
-            .where(
-                CreditCardInstallment.bill_year == year,
-                CreditCardInstallment.bill_month == m,
-                CreditCardExpense.is_refunded.is_(True),
-            )
-        )
-        count_q = await db.execute(
-            select(func.count(CreditCardInstallment.id))
-            .where(
-                CreditCardInstallment.bill_year == year,
-                CreditCardInstallment.bill_month == m,
-            )
-        )
-        out.append(CreditCardMonthSummaryOut(
+        .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
+        .where(CreditCardInstallment.bill_year == year)
+    )
+    buckets: dict[int, dict[str, Decimal | int]] = {
+        m: {
+            "total": Decimal("0"), "refunded": Decimal("0"),
+            "installment": Decimal("0"), "subscription": Decimal("0"),
+            "one_time": Decimal("0"), "count": 0,
+        }
+        for m in range(1, 13)
+    }
+    for bill_month, amount, is_refunded, is_subscription, installment_count in rows_q.all():
+        b = buckets[bill_month]
+        b["count"] += 1
+        amt = Decimal(amount or 0)
+        if is_refunded:
+            b["refunded"] += amt
+            continue
+        b["total"] += amt
+        if is_subscription:
+            b["subscription"] += amt
+        elif installment_count > 1:
+            b["installment"] += amt
+        else:
+            b["one_time"] += amt
+
+    return [
+        CreditCardMonthSummaryOut(
             bill_month=m,
             bill_year=year,
             label=f"{PT_MONTHS[m - 1]} {year}",
-            total=Decimal(total_q.scalar() or 0),
-            refunded_total=Decimal(refunded_q.scalar() or 0),
-            item_count=int(count_q.scalar() or 0),
-        ))
-    return out
+            total=buckets[m]["total"],
+            refunded_total=buckets[m]["refunded"],
+            item_count=buckets[m]["count"],
+            installment_total=buckets[m]["installment"],
+            subscription_total=buckets[m]["subscription"],
+            one_time_total=buckets[m]["one_time"],
+        )
+        for m in range(1, 13)
+    ]
+
+
+@router.get("/analytics/daily/{year}/{month}", response_model=list[CreditCardDailySpendOut])
+async def daily_spend(year: int, month: int, db: AsyncSession = Depends(get_db)):
+    """Per-day total of credit-card spend within a single bill month.
+
+    Day is taken from the `purchase_date` of the parent expense (since that's
+    when the user actually spent). Excludes refunded.
+    """
+    if not (1 <= month <= 12):
+        raise HTTPException(400, "month must be 1..12")
+    rows = await db.execute(
+        select(CreditCardExpense.purchase_date, CreditCardInstallment.amount)
+        .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
+        .where(
+            CreditCardInstallment.bill_year == year,
+            CreditCardInstallment.bill_month == month,
+            CreditCardExpense.is_refunded.is_(False),
+        )
+    )
+    days_in_month = calendar.monthrange(year, month)[1]
+    daily: dict[int, Decimal] = {d: Decimal("0") for d in range(1, days_in_month + 1)}
+    for purchase_date, amount in rows.all():
+        d = purchase_date.day if purchase_date.day in daily else days_in_month
+        daily[d] += Decimal(amount or 0)
+    return [CreditCardDailySpendOut(day=d, total=v) for d, v in daily.items()]
 
 
 @router.get("/bills/{year}/{month}", response_model=list[CreditCardBillItemOut])
@@ -523,10 +573,14 @@ async def get_bill(year: int, month: int, db: AsyncSession = Depends(get_db)):
 # ─── analytics ────────────────────────────────────────────────────────────
 
 @router.get("/analytics/by-category")
-async def by_category(year: int, db: AsyncSession = Depends(get_db)):
-    """Total credit-card spend per category for a given year."""
-    from app.models import Category
-
+async def by_category(year: int, month: int | None = None, db: AsyncSession = Depends(get_db)):
+    """Total credit-card spend per category for a given year (or single month)."""
+    where_clauses = [
+        CreditCardInstallment.bill_year == year,
+        CreditCardExpense.is_refunded.is_(False),
+    ]
+    if month:
+        where_clauses.append(CreditCardInstallment.bill_month == month)
     result = await db.execute(
         select(
             Category.name,
@@ -536,10 +590,7 @@ async def by_category(year: int, db: AsyncSession = Depends(get_db)):
         .select_from(CreditCardInstallment)
         .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
         .outerjoin(Category, Category.id == CreditCardExpense.category_id)
-        .where(
-            CreditCardInstallment.bill_year == year,
-            CreditCardExpense.is_refunded.is_(False),
-        )
+        .where(*where_clauses)
         .group_by(Category.name, Category.icon)
         .order_by(func.sum(CreditCardInstallment.amount).desc())
     )
@@ -547,6 +598,137 @@ async def by_category(year: int, db: AsyncSession = Depends(get_db)):
         {"category_name": (name or "Sem categoria"), "category_icon": icon, "total": float(total)}
         for name, icon, total in result.all()
     ]
+
+
+@router.get("/analytics/by-type")
+async def by_type(year: int, db: AsyncSession = Depends(get_db)):
+    """Annual totals split into subscription / installment / one_time."""
+    rows = await db.execute(
+        select(
+            CreditCardExpense.is_subscription,
+            CreditCardExpense.installment_count,
+            func.coalesce(func.sum(CreditCardInstallment.amount), 0),
+        )
+        .select_from(CreditCardInstallment)
+        .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
+        .where(
+            CreditCardInstallment.bill_year == year,
+            CreditCardExpense.is_refunded.is_(False),
+        )
+        .group_by(CreditCardExpense.is_subscription, CreditCardExpense.installment_count)
+    )
+    sub = inst = one = Decimal("0")
+    for is_sub, inst_count, total in rows.all():
+        amt = Decimal(total or 0)
+        if is_sub:
+            sub += amt
+        elif inst_count > 1:
+            inst += amt
+        else:
+            one += amt
+    return {
+        "subscription_total": float(sub),
+        "installment_total": float(inst),
+        "one_time_total": float(one),
+    }
+
+
+@router.post("/expenses/bulk", response_model=list[CreditCardExpenseOut], status_code=201)
+async def bulk_create_expenses(data: CreditCardBulkCreate, db: AsyncSession = Depends(get_db)):
+    """Create multiple expenses at once. Used by the PDF importer after review."""
+    card = await db.get(CreditCard, data.credit_card_id)
+    if not card:
+        raise HTTPException(404, "Card not found")
+    created_ids: list[int] = []
+    for item in data.items:
+        expense = CreditCardExpense(
+            credit_card_id=data.credit_card_id,
+            category_id=item.category_id,
+            description=item.description,
+            amount=item.amount,
+            purchase_date=item.purchase_date,
+            installment_count=max(1, item.installment_count),
+            is_subscription=False,
+            icon="credit_card",
+        )
+        db.add(expense)
+        await db.flush()
+        await _generate_installments(expense, card, db)
+        created_ids.append(expense.id)
+    await db.commit()
+    if not created_ids:
+        return []
+    result = await db.execute(
+        select(CreditCardExpense)
+        .options(
+            selectinload(CreditCardExpense.category),
+            selectinload(CreditCardExpense.installments),
+        )
+        .where(CreditCardExpense.id.in_(created_ids))
+    )
+    return list(result.scalars().all())
+
+
+@router.post("/import-pdf/parse")
+async def import_pdf_parse(
+    card_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a credit-card statement PDF, returns parsed transactions for review.
+
+    The frontend must POST the curated list back to /expenses/bulk to commit.
+    """
+    if not file.filename:
+        raise HTTPException(400, "No filename provided")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Only PDF files are supported")
+    card = await db.get(CreditCard, card_id)
+    if not card:
+        raise HTTPException(404, "Card not found")
+
+    # Save file to a temp upload dir
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(exist_ok=True)
+    file_path = upload_dir / f"cc_{card_id}_{file.filename}"
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # Parse
+    pdf_text = parser_service.extract_pdf_text(file_path)
+    if not pdf_text.strip():
+        raise HTTPException(400, "Could not extract text from PDF")
+
+    # Categorize via LLM
+    cats_q = await db.execute(select(Category).where(Category.type == "expense"))
+    categories = cats_q.scalars().all()
+    cat_payload = [{"id": c.id, "name": c.name} for c in categories]
+    cat_by_name = {c.name.lower(): c.id for c in categories}
+
+    parsed = await llm_service.extract_and_categorize_pdf(pdf_text, cat_payload)
+
+    # Filter to expenses only, normalize
+    items: list[dict] = []
+    for p in parsed:
+        if p.get("type") != "expense":
+            continue
+        try:
+            amount = abs(float(p.get("amount") or 0))
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        cat_name = p.get("category") or ""
+        suggested_id = cat_by_name.get(cat_name.lower())
+        items.append({
+            "purchase_date": p.get("date"),
+            "description": p.get("cleaned_description") or p.get("description") or "",
+            "amount": amount,
+            "suggested_category_id": suggested_id,
+            "suggested_category_name": cat_name if suggested_id else None,
+        })
+
+    return {"items": items, "card_id": card_id}
 
 
 @router.get("/subscriptions", response_model=list[CreditCardExpenseOut])
