@@ -437,6 +437,135 @@ class MonthlyEntryOut(BaseModel):
     created_at: DateTime
 
 
+# --- Credit Cards ---
+class CreditCardCreate(BaseModel):
+    name: str
+    brand: Optional[str] = None
+    color: str = "#a78bfa"
+    credit_limit: Decimal = Decimal("0")
+    closing_day: int  # 1-31
+    due_day: int  # 1-31
+
+
+class CreditCardUpdate(BaseModel):
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    color: Optional[str] = None
+    credit_limit: Optional[Decimal] = None
+    closing_day: Optional[int] = None
+    due_day: Optional[int] = None
+    active: Optional[bool] = None
+
+
+class CreditCardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    brand: Optional[str]
+    color: str
+    credit_limit: Decimal
+    closing_day: int
+    due_day: int
+    active: bool
+    used_amount: Decimal = Decimal("0")  # populated by router
+    created_at: DateTime
+
+
+class CreditCardInstallmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    expense_id: int
+    credit_card_id: int
+    installment_number: int
+    amount: Decimal
+    bill_month: int
+    bill_year: int
+    original_bill_month: int
+    original_bill_year: int
+    created_at: DateTime
+
+
+class CreditCardExpenseCreate(BaseModel):
+    credit_card_id: int
+    category_id: Optional[int] = None
+    description: str
+    amount: Decimal
+    purchase_date: Date
+    installment_count: int = 1
+    is_subscription: bool = False
+    notes: Optional[str] = None
+    icon: str = "credit_card"
+
+
+class CreditCardExpenseUpdate(BaseModel):
+    credit_card_id: Optional[int] = None
+    category_id: Optional[int] = None
+    description: Optional[str] = None
+    amount: Optional[Decimal] = None
+    purchase_date: Optional[Date] = None
+    installment_count: Optional[int] = None
+    is_subscription: Optional[bool] = None
+    notes: Optional[str] = None
+    icon: Optional[str] = None
+
+
+class CreditCardExpenseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    credit_card_id: int
+    category_id: Optional[int]
+    category: Optional[CategoryOut]
+    description: str
+    amount: Decimal
+    purchase_date: Date
+    installment_count: int
+    is_subscription: bool
+    is_refunded: bool
+    refunded_at: Optional[Date]
+    notes: Optional[str]
+    icon: str
+    installments: list[CreditCardInstallmentOut] = []
+    created_at: DateTime
+    updated_at: DateTime
+
+
+class CreditCardBillItemOut(BaseModel):
+    """An installment as it appears on a fatura — flattened with parent expense info."""
+    installment_id: int
+    expense_id: int
+    credit_card_id: int
+    card_name: str
+    card_color: str
+    description: str
+    category_id: Optional[int]
+    category_name: Optional[str]
+    category_icon: Optional[str]
+    icon: str
+    installment_number: int
+    installment_count: int
+    amount: Decimal
+    purchase_date: Date
+    is_subscription: bool
+    is_refunded: bool
+    is_anticipated: bool  # bill_month != original_bill_month
+    bill_month: int
+    bill_year: int
+
+
+class CreditCardMonthSummaryOut(BaseModel):
+    bill_month: int
+    bill_year: int
+    label: str  # "Janeiro 2026"
+    total: Decimal  # excludes refunded
+    refunded_total: Decimal
+    item_count: int
+
+
+class AnticipateInstallmentRequest(BaseModel):
+    target_month: int  # 1-12
+    target_year: int
+
+
 class MonthlySummaryOut(BaseModel):
     reference_month: int
     reference_year: int

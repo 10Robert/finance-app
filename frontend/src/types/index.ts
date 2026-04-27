@@ -279,6 +279,114 @@ export interface InstallmentPurchaseCreate {
   icon?: string
 }
 
+// Credit Cards
+export interface CreditCard {
+  id: number
+  name: string
+  brand: string | null
+  color: string
+  credit_limit: number
+  closing_day: number
+  due_day: number
+  active: boolean
+  used_amount: number
+  created_at: string
+}
+
+export interface CreditCardCreate {
+  name: string
+  brand?: string | null
+  color?: string
+  credit_limit?: number
+  closing_day: number
+  due_day: number
+}
+
+export interface CreditCardUpdate {
+  name?: string
+  brand?: string | null
+  color?: string
+  credit_limit?: number
+  closing_day?: number
+  due_day?: number
+  active?: boolean
+}
+
+export interface CreditCardInstallment {
+  id: number
+  expense_id: number
+  credit_card_id: number
+  installment_number: number
+  amount: number
+  bill_month: number
+  bill_year: number
+  original_bill_month: number
+  original_bill_year: number
+  created_at: string
+}
+
+export interface CreditCardExpense {
+  id: number
+  credit_card_id: number
+  category_id: number | null
+  category: Category | null
+  description: string
+  amount: number
+  purchase_date: string
+  installment_count: number
+  is_subscription: boolean
+  is_refunded: boolean
+  refunded_at: string | null
+  notes: string | null
+  icon: string
+  installments: CreditCardInstallment[]
+  created_at: string
+  updated_at: string
+}
+
+export interface CreditCardExpenseCreate {
+  credit_card_id: number
+  category_id?: number | null
+  description: string
+  amount: number
+  purchase_date: string
+  installment_count?: number
+  is_subscription?: boolean
+  notes?: string | null
+  icon?: string
+}
+
+export interface CreditCardBillItem {
+  installment_id: number
+  expense_id: number
+  credit_card_id: number
+  card_name: string
+  card_color: string
+  description: string
+  category_id: number | null
+  category_name: string | null
+  category_icon: string | null
+  icon: string
+  installment_number: number
+  installment_count: number
+  amount: number
+  purchase_date: string
+  is_subscription: boolean
+  is_refunded: boolean
+  is_anticipated: boolean
+  bill_month: number
+  bill_year: number
+}
+
+export interface CreditCardMonthSummary {
+  bill_month: number
+  bill_year: number
+  label: string
+  total: number
+  refunded_total: number
+  item_count: number
+}
+
 // Monthly Entries (overtime / refund / late / absence / medical certificate launches)
 export type MonthlyEntryType = 'overtime' | 'refund' | 'late' | 'absence' | 'medical_certificate'
 

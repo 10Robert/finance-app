@@ -233,6 +233,71 @@ export const createInstallment = (data: InstallmentPurchaseCreate) =>
 export const deleteInstallment = (id: number) =>
   api.delete(`/installments/${id}`)
 
+// Credit Cards
+import type {
+  CreditCard,
+  CreditCardCreate,
+  CreditCardUpdate,
+  CreditCardExpense,
+  CreditCardExpenseCreate,
+  CreditCardBillItem,
+  CreditCardMonthSummary,
+} from '../types'
+
+export const getCreditCards = () =>
+  api.get<CreditCard[]>('/credit-cards/cards').then((r) => r.data)
+
+export const createCreditCard = (data: CreditCardCreate) =>
+  api.post<CreditCard>('/credit-cards/cards', data).then((r) => r.data)
+
+export const updateCreditCard = (id: number, data: CreditCardUpdate) =>
+  api.put<CreditCard>(`/credit-cards/cards/${id}`, data).then((r) => r.data)
+
+export const deleteCreditCard = (id: number) =>
+  api.delete(`/credit-cards/cards/${id}`)
+
+export const createCreditCardExpense = (data: CreditCardExpenseCreate) =>
+  api.post<CreditCardExpense>('/credit-cards/expenses', data).then((r) => r.data)
+
+export const listCreditCardExpenses = (params?: { card_id?: number }) =>
+  api.get<CreditCardExpense[]>('/credit-cards/expenses', { params }).then((r) => r.data)
+
+export const updateCreditCardExpense = (id: number, data: Partial<CreditCardExpenseCreate>) =>
+  api.put<CreditCardExpense>(`/credit-cards/expenses/${id}`, data).then((r) => r.data)
+
+export const deleteCreditCardExpense = (id: number) =>
+  api.delete(`/credit-cards/expenses/${id}`)
+
+export const refundCreditCardExpense = (id: number) =>
+  api.post<CreditCardExpense>(`/credit-cards/expenses/${id}/refund`).then((r) => r.data)
+
+export const unrefundCreditCardExpense = (id: number) =>
+  api.post<CreditCardExpense>(`/credit-cards/expenses/${id}/unrefund`).then((r) => r.data)
+
+export const anticipateInstallment = (
+  installmentId: number,
+  data: { target_month: number; target_year: number },
+) => api.post(`/credit-cards/installments/${installmentId}/anticipate`, data).then((r) => r.data)
+
+export const getCreditCardBillMonths = (year: number) =>
+  api
+    .get<CreditCardMonthSummary[]>('/credit-cards/bills/months', { params: { year } })
+    .then((r) => r.data)
+
+export const getCreditCardBill = (year: number, month: number) =>
+  api.get<CreditCardBillItem[]>(`/credit-cards/bills/${year}/${month}`).then((r) => r.data)
+
+export const getCreditCardSubscriptions = () =>
+  api.get<CreditCardExpense[]>('/credit-cards/subscriptions').then((r) => r.data)
+
+export const getCreditCardByCategory = (year: number) =>
+  api
+    .get<{ category_name: string; category_icon: string | null; total: number }[]>(
+      '/credit-cards/analytics/by-category',
+      { params: { year } },
+    )
+    .then((r) => r.data)
+
 // JSON Import
 export const importTransactionsJson = (transactions: Record<string, unknown>[]) =>
   api.post<{ created: number; errors: string[] }>('/transactions/import-json', { transactions }).then((r) => r.data)
