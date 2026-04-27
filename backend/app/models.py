@@ -190,6 +190,76 @@ class StagedTransaction(Base):
     category: Mapped[Category | None] = relationship(back_populates="staged_transactions")
 
 
+class CreditCard(Base):
+    __tablename__ = "credit_cards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    brand: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    color: Mapped[str] = mapped_column(String(20), default="#a78bfa", server_default="#a78bfa")
+    credit_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, server_default="0")
+    closing_day: Mapped[int] = mapped_column(Integer)  # dia do fechamento da fatura (1-31)
+    due_day: Mapped[int] = mapped_column(Integer)  # dia do vencimento (1-31)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    expenses: Mapped[list["CreditCardExpense"]] = relationship(
+        back_populates="card", cascade="all, delete-orphan"
+    )
+
+
+class CreditCardExpense(Base):
+    """A credit card purchase. Splits into N CreditCardInstallment rows."""
+    __tablename__ = "credit_card_expenses"
+    __table_args__ = (
+        Index("idx_cc_expenses_card", "credit_card_id"),
+        Index("idx_cc_expenses_date", "purchase_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    credit_card_id: Mapped[int] = mapped_column(ForeignKey("credit_cards.id", ondelete="CASCADE"))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    description: Mapped[str] = mapped_column(String(500))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))  # total amount
+    purchase_date: Mapped[date] = mapped_column(Date)
+    installment_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    is_subscription: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    is_refunded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    refunded_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), default="credit_card", server_default="credit_card")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    card: Mapped["CreditCard"] = relationship(back_populates="expenses")
+    category: Mapped[Category | None] = relationship()
+    installments: Mapped[list["CreditCardInstallment"]] = relationship(
+        back_populates="expense", cascade="all, delete-orphan"
+    )
+
+
+class CreditCardInstallment(Base):
+    """One row per parcela of a CreditCardExpense (or per month for subscriptions)."""
+    __tablename__ = "credit_card_installments"
+    __table_args__ = (
+        Index("idx_cc_inst_period", "bill_year", "bill_month"),
+        Index("idx_cc_inst_card", "credit_card_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey("credit_card_expenses.id", ondelete="CASCADE"))
+    credit_card_id: Mapped[int] = mapped_column(ForeignKey("credit_cards.id", ondelete="CASCADE"))
+    installment_number: Mapped[int] = mapped_column(Integer)  # 1..N (or month index for subscription)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    bill_month: Mapped[int] = mapped_column(Integer)  # current bill month (1-12)
+    bill_year: Mapped[int] = mapped_column(Integer)
+    original_bill_month: Mapped[int] = mapped_column(Integer)  # for tracking antecipação
+    original_bill_year: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    expense: Mapped["CreditCardExpense"] = relationship(back_populates="installments")
+
+
 class Income(Base):
     __tablename__ = "incomes"
     __table_args__ = (

@@ -5,10 +5,12 @@ import TransactionsPage from './pages/TransactionsPage'
 import SalaryPage from './pages/SalaryPage'
 import ExpensesPage from './pages/ExpensesPage'
 import SettingsPage from './pages/SettingsPage'
+import CreditCardsPage from './pages/CreditCardsPage'
 
 const navItems = [
   { to: '/', label: 'Painel', icon: 'dashboard' },
   { to: '/expenses', label: 'Gastos', icon: 'shopping_cart' },
+  { to: '/credit-cards', label: 'Cartão de Crédito', icon: 'credit_card' },
   { to: '/transactions', label: 'Transações', icon: 'receipt_long' },
   { to: '/reports', label: 'Relatórios', icon: 'analytics' },
   { to: '/salary', label: 'Rendimentos', icon: 'trending_up' },
@@ -76,6 +78,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/credit-cards" element={<CreditCardsPage />} />
             <Route path="/transactions" element={<TransactionsPage />} />
             <Route path="/salary" element={<SalaryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
