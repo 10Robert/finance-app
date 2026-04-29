@@ -17,7 +17,6 @@ import {
   anticipateInstallment,
   getCreditCardBillMonths,
   getCreditCardBill,
-  getCreditCardSubscriptions,
   getCreditCardByCategory,
   getCreditCardByType,
   getCreditCardDailySpend,
@@ -85,10 +84,6 @@ export default function CreditCardsPage() {
     queryKey: ['cc-bill-months', year],
     queryFn: () => getCreditCardBillMonths(year),
   })
-  const { data: subscriptions = [] } = useQuery({
-    queryKey: ['cc-subscriptions'],
-    queryFn: getCreditCardSubscriptions,
-  })
   const byCategoryParams = mode === 'monthly' ? { year, month: selectedMonth } : { year }
   const { data: byCategory = [] } = useQuery({
     queryKey: ['cc-by-category', year, mode === 'monthly' ? selectedMonth : 'all'],
@@ -128,7 +123,6 @@ export default function CreditCardsPage() {
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['cc-cards'] })
     qc.invalidateQueries({ queryKey: ['cc-bill-months'] })
-    qc.invalidateQueries({ queryKey: ['cc-subscriptions'] })
     qc.invalidateQueries({ queryKey: ['cc-by-category'] })
     qc.invalidateQueries({ queryKey: ['cc-by-type'] })
     qc.invalidateQueries({ queryKey: ['cc-daily'] })
@@ -189,10 +183,20 @@ export default function CreditCardsPage() {
 
   const selectedSummary = monthSummaries.find((m) => m.bill_month === selectedMonth)
 
-  const recentExpenses = useMemo(
-    () => allExpenses.slice(0, 8),
-    [allExpenses],
-  )
+  /* ── filtro do painel de lançamentos (avulsos / parcelados / assinaturas) ── */
+  const [expenseFilter, setExpenseFilter] = useState<
+    'all' | 'one_time' | 'installment' | 'subscription'
+  >('all')
+
+  const filteredExpenses = useMemo(() => {
+    let list = allExpenses
+    if (expenseFilter === 'subscription') list = list.filter((e) => e.is_subscription)
+    else if (expenseFilter === 'installment')
+      list = list.filter((e) => !e.is_subscription && e.installment_count > 1)
+    else if (expenseFilter === 'one_time')
+      list = list.filter((e) => !e.is_subscription && e.installment_count === 1)
+    return expenseFilter === 'subscription' ? list : list.slice(0, 10)
+  }, [allExpenses, expenseFilter])
 
   return (
     <div className="space-y-8">
@@ -499,42 +503,91 @@ export default function CreditCardsPage() {
             )}
           </section>
 
-          {/* Subscriptions */}
+          {/* Lançamentos (avulsos + parcelados + assinaturas) */}
           <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <header className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-medium text-on-surface">Assinaturas</h2>
-              <span className="text-xs text-on-surface-variant">
-                aparece em todas as faturas
-              </span>
+            <header className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+              <h2 className="text-base font-medium text-on-surface">Lançamentos</h2>
+              <div className="flex border border-outline-variant rounded-lg overflow-hidden text-xs">
+                {([
+                  ['all', 'Todos'],
+                  ['one_time', 'Avulsos'],
+                  ['installment', 'Parcelados'],
+                  ['subscription', 'Assinaturas'],
+                ] as const).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setExpenseFilter(k)}
+                    className={`px-3 py-1.5 transition-colors ${
+                      expenseFilter === k
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </header>
             <div className="space-y-2">
-              {subscriptions.length === 0 && (
+              {filteredExpenses.length === 0 && (
                 <p className="text-sm text-on-surface-variant text-center py-6">
-                  Nenhuma assinatura. Marque "Assinatura?" ao lançar um gasto.
+                  {expenseFilter === 'subscription'
+                    ? 'Nenhuma assinatura. Marque "Assinatura?" ao lançar um gasto.'
+                    : 'Nenhum lançamento encontrado.'}
                 </p>
               )}
-              {subscriptions.map((s) => {
-                const card = cards.find((c) => c.id === s.credit_card_id)
+              {filteredExpenses.map((e) => {
+                const card = cards.find((c) => c.id === e.credit_card_id)
+                const isSub = e.is_subscription
+                const isInstallment = !isSub && e.installment_count > 1
+                const tag = isSub
+                  ? 'Assinatura'
+                  : isInstallment
+                  ? `Parcelado ${e.installment_count}x`
+                  : 'Avulso'
+                const iconName = isSub
+                  ? 'subscriptions'
+                  : isInstallment
+                  ? 'splitscreen'
+                  : 'receipt_long'
+                const iconColor = isSub
+                  ? 'text-tertiary'
+                  : isInstallment
+                  ? 'text-primary'
+                  : 'text-on-surface-variant'
                 return (
                   <div
-                    key={s.id}
+                    key={e.id}
                     className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant bg-surface-container-low"
                   >
-                    <span className="material-symbols-outlined text-tertiary">subscriptions</span>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-on-surface">{s.description}</p>
-                      <p className="text-xs text-on-surface-variant">
-                        {card?.name || '—'} · {s.category?.name || 'Sem categoria'}
+                    <span className={`material-symbols-outlined ${iconColor}`}>
+                      {e.category?.icon || iconName}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-on-surface truncate">
+                        {e.description}
+                      </p>
+                      <p className="text-xs text-on-surface-variant truncate">
+                        {card?.name || '—'} · {e.category?.name || 'Sem categoria'} · {tag}
                       </p>
                     </div>
-                    <p className="text-sm font-medium text-on-surface">{fmt(Number(s.amount))}/mês</p>
+                    <p
+                      className={`text-sm font-medium whitespace-nowrap ${
+                        e.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'
+                      }`}
+                    >
+                      {isSub ? `${fmt(Number(e.amount))}/mês` : `- ${fmt(Number(e.amount))}`}
+                    </p>
                     <button
                       onClick={() => {
-                        if (confirm('Remover esta assinatura? Todas as parcelas futuras serão excluídas.'))
-                          deleteCreditCardExpense(s.id).then(invalidateAll)
+                        const msg = isSub
+                          ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
+                          : 'Remover este lançamento?'
+                        if (confirm(msg))
+                          deleteCreditCardExpense(e.id).then(invalidateAll)
                       }}
                       className="text-on-surface-variant hover:text-error"
-                      title="Remover assinatura"
+                      title="Remover"
                     >
                       <span className="material-symbols-outlined text-base">delete</span>
                     </button>
@@ -552,40 +605,6 @@ export default function CreditCardsPage() {
             categories={expenseCategories}
             onCreated={invalidateAll}
           />
-
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <h3 className="text-xs uppercase tracking-wide text-on-surface-variant mb-3">
-              Últimos Lançamentos
-            </h3>
-            <div className="space-y-2">
-              {recentExpenses.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center py-4">
-                  Sem lançamentos ainda.
-                </p>
-              )}
-              {recentExpenses.map((e) => (
-                <div key={e.id} className="flex items-center gap-3 py-2">
-                  <div className="w-8 h-8 rounded-lg bg-surface-container-highest flex items-center justify-center">
-                    <span className="material-symbols-outlined text-sm text-on-surface-variant">
-                      {e.category?.icon || 'receipt_long'}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-on-surface truncate">
-                      {e.description}
-                      {e.installment_count > 1 ? ` - 1/${e.installment_count}` : ''}
-                    </p>
-                    {e.is_refunded && (
-                      <p className="text-[11px] text-tertiary">Reembolsado</p>
-                    )}
-                  </div>
-                  <p className={`text-sm font-medium ${e.is_refunded ? 'line-through text-on-surface-variant' : 'text-error'}`}>
-                    - {fmt(Number(e.amount))}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
       </div>
 
