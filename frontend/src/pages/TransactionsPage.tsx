@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getTransactions,
@@ -13,15 +13,11 @@ import {
   updateStagedTransactions,
   confirmImport,
   createFixedExpense,
-  deleteFixedExpense,
-  getFixedExpenses,
   createInstallment,
-  deleteInstallment,
-  getInstallments,
   importTransactionsJson,
 } from '../api/client'
-import type { TransactionCreate, Transaction, FixedExpenseCreate, InstallmentPurchaseCreate } from '../types'
-import TransactionForm from '../components/TransactionForm'
+import type { TransactionCreate, Transaction } from '../types'
+import TransactionForm, { type TransactionFormSubmit } from '../components/TransactionForm'
 import ImportReview from '../components/ImportReview'
 
 const fmt = (v: number) =>
@@ -108,8 +104,19 @@ export default function TransactionsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [showJsonImport, setShowJsonImport] = useState(false)
-  const [showFixedExpense, setShowFixedExpense] = useState(false)
-  const [showInstallment, setShowInstallment] = useState(false)
+  const [showImportMenu, setShowImportMenu] = useState(false)
+  const importMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!showImportMenu) return
+    const onClickOutside = (e: MouseEvent) => {
+      if (importMenuRef.current && !importMenuRef.current.contains(e.target as Node)) {
+        setShowImportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [showImportMenu])
 
   // Resolve the active date range from the selected period mode.
   const { startDate, endDate } = useMemo(() => {
@@ -197,9 +204,40 @@ export default function TransactionsPage() {
     onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
   })
 
-  const handleSubmit = (formData: TransactionCreate) => {
-    if (editingId) updateMut.mutate({ id: editingId, data: formData })
-    else createMut.mutate(formData)
+  const createFixedMut = useMutation({
+    mutationFn: createFixedExpense,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+      queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
+      queryClient.invalidateQueries({ queryKey: ['transactions-grouped'] })
+      setShowForm(false)
+    },
+    onError: (err) => alert(`Erro ao cadastrar gasto fixo: ${extractError(err)}`),
+  })
+
+  const createInstallmentMut = useMutation({
+    mutationFn: createInstallment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['balance'] })
+      queryClient.invalidateQueries({ queryKey: ['installments'] })
+      setShowForm(false)
+    },
+    onError: (err) => alert(`Erro ao cadastrar parcelamento: ${extractError(err)}`),
+  })
+
+  const handleSubmit = (payload: TransactionFormSubmit) => {
+    if (editingId) {
+      // Edição mantém apenas o modo avulsa
+      if (payload.kind === 'one_time') {
+        updateMut.mutate({ id: editingId, data: payload.data })
+      }
+      return
+    }
+    if (payload.kind === 'one_time') createMut.mutate(payload.data)
+    else if (payload.kind === 'fixed') createFixedMut.mutate(payload.data)
+    else createInstallmentMut.mutate(payload.data)
   }
 
   const handleDelete = (id: number) => {
@@ -272,40 +310,54 @@ export default function TransactionsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">upload_file</span>
-            <span className="text-sm font-medium text-[#fafafa]">Importar Extrato</span>
-          </button>
-          <button
-            onClick={() => setShowJsonImport(true)}
-            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">data_object</span>
-            <span className="text-sm font-medium text-[#fafafa]">Importar JSON</span>
-          </button>
+          {/* Importar (dropdown PDF / JSON) */}
+          <div ref={importMenuRef} className="relative">
+            <button
+              onClick={() => setShowImportMenu((v) => !v)}
+              className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-[#a1a1aa] text-lg">upload_file</span>
+              <span className="text-sm font-medium text-[#fafafa]">Importar Gastos</span>
+              <span className="material-symbols-outlined text-[#a1a1aa] text-base">expand_more</span>
+            </button>
+            {showImportMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-[#0c0c0f] border border-[#27272a] rounded-lg shadow-2xl overflow-hidden z-20">
+                <button
+                  onClick={() => {
+                    setShowImportMenu(false)
+                    setShowImport(true)
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#18181b] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#a78bfa] text-lg">picture_as_pdf</span>
+                  <div>
+                    <p className="text-sm font-medium text-[#fafafa]">Exportar PDF</p>
+                    <p className="text-[10px] text-[#a1a1aa]">Extrato bancário (PDF / CSV)</p>
+                  </div>
+                </button>
+                <div className="h-px bg-[#27272a]" />
+                <button
+                  onClick={() => {
+                    setShowImportMenu(false)
+                    setShowJsonImport(true)
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#18181b] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#34d399] text-lg">data_object</span>
+                  <div>
+                    <p className="text-sm font-medium text-[#fafafa]">Exportar JSON</p>
+                    <p className="text-[10px] text-[#a1a1aa]">Arquivo .json estruturado</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={exportCSV}
             className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-[#a1a1aa] text-lg">download</span>
             <span className="text-sm font-medium text-[#fafafa]">Exportar</span>
-          </button>
-          <button
-            onClick={() => setShowFixedExpense(true)}
-            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">repeat</span>
-            <span className="text-sm font-medium text-[#fafafa]">Gasto Fixo</span>
-          </button>
-          <button
-            onClick={() => setShowInstallment(true)}
-            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">credit_card</span>
-            <span className="text-sm font-medium text-[#fafafa]">Parcelado</span>
           </button>
           <button
             onClick={() => {
@@ -599,22 +651,6 @@ export default function TransactionsPage() {
 
       {/* Modal: JSON Import */}
       {showJsonImport && <JsonImportModal onClose={() => setShowJsonImport(false)} />}
-
-      {/* Modal: Fixed Expense */}
-      {showFixedExpense && (
-        <FixedExpenseModal
-          categories={categories || []}
-          onClose={() => setShowFixedExpense(false)}
-        />
-      )}
-
-      {/* Modal: Installment */}
-      {showInstallment && (
-        <InstallmentModal
-          categories={categories || []}
-          onClose={() => setShowInstallment(false)}
-        />
-      )}
     </div>
   )
 }
@@ -991,9 +1027,6 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
     reader.readAsText(file)
   }
 
-  const inputClass =
-    'bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
@@ -1101,454 +1134,6 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
               >
                 Fechar
               </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// --- Fixed Expense Modal ----------------------------------------------------
-
-function FixedExpenseModal({
-  categories,
-  onClose,
-}: {
-  categories: { id: number; name: string; type: string; icon: string | null }[]
-  onClose: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [description, setDescription] = useState('')
-  const [amount, setAmount] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [dayOfMonth, setDayOfMonth] = useState('1')
-  const [isPermanent, setIsPermanent] = useState(true)
-  const now = new Date()
-  const [startDate, setStartDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`)
-  const [endDate, setEndDate] = useState('')
-
-  const { data: fixedExpenses } = useQuery({
-    queryKey: ['fixed-expenses'],
-    queryFn: getFixedExpenses,
-  })
-
-  const createMut = useMutation({
-    mutationFn: createFixedExpense,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['balance'] })
-      setDescription('')
-      setAmount('')
-      setCategoryId('')
-    },
-    onError: (err) => alert(`Erro: ${extractError(err)}`),
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: deleteFixedExpense,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['balance'] })
-    },
-    onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const data: FixedExpenseCreate = {
-      description,
-      amount: parseFloat(amount),
-      category_id: categoryId ? Number(categoryId) : null,
-      day_of_month: Number(dayOfMonth),
-      is_permanent: isPermanent,
-      start_date: startDate,
-      end_date: isPermanent ? null : endDate || null,
-    }
-    createMut.mutate(data)
-  }
-
-  const expenseCategories = categories.filter((c) => c.type === 'expense')
-  const inputClass =
-    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
-          <div>
-            <h3 className="text-lg font-bold text-[#fafafa]">Gastos Fixos Mensais</h3>
-            <p className="text-xs text-[#a1a1aa]">
-              Cadastre despesas que se repetem todo mês. Elas aparecerão automaticamente nas transações.
-            </p>
-          </div>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
-            close
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          {/* Create form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Descrição</label>
-                <input
-                  type="text"
-                  required
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className={inputClass}
-                  placeholder="Ex: Aluguel"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Valor (R$)</label>
-                <input
-                  type="number"
-                  required
-                  step="0.01"
-                  min="0.01"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className={inputClass}
-                  placeholder="0,00"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Categoria</label>
-                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
-                  <option value="">Sem categoria</option>
-                  {expenseCategories.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-[#09090b]">
-                      {c.icon} {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Dia do mês</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={dayOfMonth}
-                  onChange={(e) => setDayOfMonth(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Início</label>
-                <input
-                  type="date"
-                  required
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Tipo de duração</label>
-                <div className="flex gap-2 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => setIsPermanent(true)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isPermanent
-                        ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
-                        : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
-                    }`}
-                  >
-                    Permanente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsPermanent(false)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      !isPermanent
-                        ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
-                        : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
-                    }`}
-                  >
-                    Com prazo
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {!isPermanent && (
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Data final</label>
-                <input
-                  type="date"
-                  required={!isPermanent}
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={createMut.isPending}
-              className="w-full bg-[#a78bfa] text-[#0a0012] py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 disabled:opacity-50 transition-colors"
-            >
-              {createMut.isPending ? 'Cadastrando…' : 'Cadastrar Gasto Fixo'}
-            </button>
-          </form>
-
-          {/* List existing */}
-          {fixedExpenses && fixedExpenses.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-bold text-[#a1a1aa] uppercase tracking-widest">Gastos fixos cadastrados</h4>
-              <div className="space-y-2">
-                {fixedExpenses.map((fe) => (
-                  <div
-                    key={fe.id}
-                    className="flex items-center justify-between bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm text-[#fafafa] font-medium">{fe.description}</p>
-                      <p className="text-xs text-[#a1a1aa]">
-                        {fmt(fe.amount)} • Dia {fe.day_of_month} •{' '}
-                        {fe.is_permanent ? 'Permanente' : `Até ${fmtDate(fe.end_date!)}`}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (confirm('Excluir este gasto fixo e todas as transações geradas?'))
-                          deleteMut.mutate(fe.id)
-                      }}
-                      className="text-[#a1a1aa] hover:text-[#ef4444] transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-lg">delete</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// --- Installment Modal ------------------------------------------------------
-
-function InstallmentModal({
-  categories,
-  onClose,
-}: {
-  categories: { id: number; name: string; type: string; icon: string | null }[]
-  onClose: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [description, setDescription] = useState('')
-  const [totalAmount, setTotalAmount] = useState('')
-  const [installmentCount, setInstallmentCount] = useState('2')
-  const [categoryId, setCategoryId] = useState('')
-  const now = new Date()
-  const [startDate, setStartDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`)
-
-  const { data: installments } = useQuery({
-    queryKey: ['installments'],
-    queryFn: getInstallments,
-  })
-
-  const createMut = useMutation({
-    mutationFn: createInstallment,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['installments'] })
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['balance'] })
-      setDescription('')
-      setTotalAmount('')
-      setInstallmentCount('2')
-    },
-    onError: (err) => alert(`Erro: ${extractError(err)}`),
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: deleteInstallment,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['installments'] })
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['balance'] })
-    },
-    onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const data: InstallmentPurchaseCreate = {
-      description,
-      total_amount: parseFloat(totalAmount),
-      installment_count: Number(installmentCount),
-      category_id: categoryId ? Number(categoryId) : null,
-      start_date: startDate,
-    }
-    createMut.mutate(data)
-  }
-
-  const installmentPreview = totalAmount && installmentCount
-    ? (parseFloat(totalAmount) / Number(installmentCount)).toFixed(2)
-    : null
-
-  const expenseCategories = categories.filter((c) => c.type === 'expense')
-  const inputClass =
-    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
-          <div>
-            <h3 className="text-lg font-bold text-[#fafafa]">Compra Parcelada</h3>
-            <p className="text-xs text-[#a1a1aa]">
-              Cadastre uma compra parcelada. As parcelas serão criadas automaticamente como transações.
-            </p>
-          </div>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
-            close
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs text-[#a1a1aa] mb-1">Descrição do produto</label>
-              <input
-                type="text"
-                required
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className={inputClass}
-                placeholder="Ex: iPhone 15"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Valor total (R$)</label>
-                <input
-                  type="number"
-                  required
-                  step="0.01"
-                  min="0.01"
-                  value={totalAmount}
-                  onChange={(e) => setTotalAmount(e.target.value)}
-                  className={inputClass}
-                  placeholder="0,00"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Número de parcelas</label>
-                <input
-                  type="number"
-                  required
-                  min="2"
-                  max="120"
-                  value={installmentCount}
-                  onChange={(e) => setInstallmentCount(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            {installmentPreview && (
-              <div className="bg-[#a78bfa]/5 border border-[#a78bfa]/20 rounded-lg p-3 flex items-center gap-3">
-                <span className="material-symbols-outlined text-[#a78bfa] text-xl">info</span>
-                <p className="text-sm text-[#a1a1aa]">
-                  Valor por parcela: <span className="text-[#fafafa] font-bold">{fmt(Number(installmentPreview))}</span>
-                  {' '}× {installmentCount}x
-                </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Categoria</label>
-                <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
-                  <option value="">Sem categoria</option>
-                  {expenseCategories.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-[#09090b]">
-                      {c.icon} {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Data da primeira parcela</label>
-                <input
-                  type="date"
-                  required
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={createMut.isPending}
-              className="w-full bg-[#a78bfa] text-[#0a0012] py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 disabled:opacity-50 transition-colors"
-            >
-              {createMut.isPending ? 'Cadastrando…' : 'Cadastrar Parcelamento'}
-            </button>
-          </form>
-
-          {/* List existing */}
-          {installments && installments.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-bold text-[#a1a1aa] uppercase tracking-widest">Parcelamentos cadastrados</h4>
-              <div className="space-y-2">
-                {installments.map((ip) => (
-                  <div
-                    key={ip.id}
-                    className="flex items-center justify-between bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm text-[#fafafa] font-medium">{ip.description}</p>
-                      <p className="text-xs text-[#a1a1aa]">
-                        Total: {fmt(ip.total_amount)} • {ip.installment_count}x de{' '}
-                        {fmt(ip.total_amount / ip.installment_count)} • Início: {fmtDate(ip.start_date)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (confirm('Excluir este parcelamento e todas as parcelas geradas?'))
-                          deleteMut.mutate(ip.id)
-                      }}
-                      className="text-[#a1a1aa] hover:text-[#ef4444] transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-lg">delete</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </div>

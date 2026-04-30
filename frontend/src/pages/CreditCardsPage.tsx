@@ -294,7 +294,7 @@ export default function CreditCardsPage() {
             onMouseUp={onCarouselUp}
             onMouseLeave={onCarouselUp}
             className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 select-none cc-carousel"
-            style={{ cursor: 'grab', scrollbarWidth: 'thin' }}
+            style={{ cursor: 'grab' }}
           >
             {monthSummaries.map((m, i) => {
               const isCurrent = i === currentMonthIdx
