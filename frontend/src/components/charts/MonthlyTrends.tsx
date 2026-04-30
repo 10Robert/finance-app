@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts'
 import type { MonthlyTrend } from '../../types'
 
@@ -5,15 +6,19 @@ interface Props {
   data: MonthlyTrend[]
 }
 
-export default function MonthlyTrendsChart({ data }: Props) {
-  const chartData = data.map((d) => ({
-    month: d.month,
-    Receita: Number(d.income),
-    Despesa: Number(d.expenses),
-  }))
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+function MonthlyTrendsChart({ data }: Props) {
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        month: d.month,
+        Receita: Number(d.income),
+        Despesa: Number(d.expenses),
+      })),
+    [data],
+  )
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -29,3 +34,5 @@ export default function MonthlyTrendsChart({ data }: Props) {
     </ResponsiveContainer>
   )
 }
+
+export default memo(MonthlyTrendsChart)

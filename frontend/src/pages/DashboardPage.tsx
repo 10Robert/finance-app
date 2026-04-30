@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   getBalance,
@@ -20,8 +20,11 @@ export default function DashboardPage() {
   const [month, setMonth] = useState<number | undefined>(now.getMonth() + 1)
   const [flowView, setFlowView] = useState<'month' | 'year'>('month')
 
-  const params = { year, month }
-  const flowParams = flowView === 'month' ? { year, month } : { year }
+  const params = useMemo(() => ({ year, month }), [year, month])
+  const flowParams = useMemo(
+    () => (flowView === 'month' ? { year, month } : { year }),
+    [flowView, year, month],
+  )
 
   const { data: balance } = useQuery({
     queryKey: ['balance', params],

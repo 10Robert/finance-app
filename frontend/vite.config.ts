@@ -9,4 +9,22 @@ export default defineConfig({
       '/api': 'http://localhost:8000',
     },
   },
+  build: {
+    target: 'es2020',
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('recharts')) return 'recharts'
+            if (id.includes('@tanstack/react-query')) return 'react-query'
+            if (
+              id.includes('react-router') ||
+              id.includes('/react-dom/') ||
+              id.includes('/react/')
+            ) return 'react-vendor'
+          }
+        },
+      },
+    },
+  },
 })

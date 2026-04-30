@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { Transaction } from '../types'
 
 interface Props {
@@ -6,10 +7,10 @@ interface Props {
   onDelete: (id: number) => void
 }
 
-export default function TransactionTable({ transactions, onEdit, onDelete }: Props) {
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
+function TransactionTable({ transactions, onEdit, onDelete }: Props) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -64,3 +65,5 @@ export default function TransactionTable({ transactions, onEdit, onDelete }: Pro
     </div>
   )
 }
+
+export default memo(TransactionTable)

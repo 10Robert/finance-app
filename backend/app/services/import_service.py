@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BankImport, StagedTransaction, Transaction, Category
@@ -35,7 +35,7 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
         category_map = await get_category_map(db)
 
         if bank_import.file_type == "csv":
-            parsed_rows = parser_service.parse_csv(file_path)
+            parsed_rows = await parser_service.parse_csv_async(file_path)
             llm_results = await llm_service.categorize_transactions(parsed_rows, categories)
 
             for i, llm_row in enumerate(llm_results):
@@ -57,7 +57,7 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
                 db.add(staged)
 
         elif bank_import.file_type == "pdf":
-            pdf_text = parser_service.extract_pdf_text(file_path)
+            pdf_text = await parser_service.extract_pdf_text_async(file_path)
             llm_results = await llm_service.extract_and_categorize_pdf(pdf_text, categories)
 
             for llm_row in llm_results:
@@ -102,27 +102,27 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> dict:
     )
     staged_rows = result.scalars().all()
 
-    created = 0
-    skipped_income = 0
-    for staged in staged_rows:
-        if staged.type == "income":
-            skipped_income += 1
-            continue
-        transaction = Transaction(
-            date=staged.date,
-            description=staged.description,
-            amount=staged.amount,
-            type=staged.type,
-            category_id=staged.category_id,
-            bank_import_id=bank_import_id,
-        )
-        db.add(transaction)
-        created += 1
+    skipped_income = sum(1 for s in staged_rows if s.type == "income")
+    rows_to_insert = [
+        {
+            "date": s.date,
+            "description": s.description,
+            "amount": s.amount,
+            "type": s.type,
+            "category_id": s.category_id,
+            "bank_import_id": bank_import_id,
+        }
+        for s in staged_rows
+        if s.type != "income"
+    ]
+
+    if rows_to_insert:
+        await db.execute(insert(Transaction), rows_to_insert)
 
     bank_import = await db.get(BankImport, bank_import_id)
     bank_import.status = "completed"
     await db.commit()
-    return {"created": created, "skipped_income": skipped_income}
+    return {"created": len(rows_to_insert), "skipped_income": skipped_income}
 
 
 def _parse_date(value: str) -> date:
