@@ -6,6 +6,7 @@ import {
   getTopCategoriesRange,
   getCategoryTransactions,
   createFixedExpense,
+  getBalance,
 } from '../api/client'
 import type { Transaction, SpendingByCategory, FixedExpenseCreate } from '../types'
 
@@ -103,9 +104,17 @@ export default function ExpensesPage() {
     queryFn: () => getTopCategoriesRange({ ...dateRange, limit: 10 }),
   })
 
+  const { data: balance } = useQuery({
+    queryKey: ['balance', dateRange],
+    queryFn: () => getBalance(dateRange),
+  })
+
   /* derived */
   const oneTime = grouped?.one_time || []
   const recurring = grouped?.recurring || []
+  const totalExpenses = Number(balance?.expense_total ?? 0)
+  const totalIncome = Number(balance?.income_total ?? 0)
+  const netResult = totalIncome - totalExpenses
 
   /* period navigation */
   const prevPeriod = () => {
@@ -149,9 +158,6 @@ export default function ExpensesPage() {
 
   /* ─── render ───────────────────────────────────────────────────────── */
 
-  const inputClass =
-    'bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa] focus:border-transparent'
-
   const tabClass = (active: boolean) =>
     `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
       active
@@ -186,90 +192,6 @@ export default function ExpensesPage() {
         </div>
       </header>
 
-      {/* ─── Stacked Bar Chart ──────────────────────────────────────── */}
-      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]">bar_chart</span>
-            <h3 className="text-[#fafafa] font-bold">{chartTitle}</h3>
-          </div>
-          <div className="flex items-center gap-4">
-            {LEGEND_ITEMS.map((l) => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
-                <span className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">{l.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {chart && chart.bars.length > 0 ? (
-          <div className="flex items-end justify-between gap-2 h-[220px]">
-            {(() => {
-              const maxVal = Math.max(
-                ...chart.bars.flatMap((b) => [
-                  Math.abs(Number(b.accumulated)),
-                  Number(b.expenses),
-                  Math.abs(Number(b.net)),
-                ]),
-                1,
-              )
-              return chart.bars.map((bar) => {
-                const accH = Math.max((Math.abs(Number(bar.accumulated)) / maxVal) * 200, 4)
-                const expH = Math.max((Number(bar.expenses) / maxVal) * 200, 4)
-                const netH = Math.max((Math.abs(Number(bar.net)) / maxVal) * 200, 4)
-                return (
-                  <div key={bar.label} className="flex-1 flex flex-col items-center gap-2 group relative">
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full mb-2 hidden group-hover:block z-10 bg-[#18181b] border border-[#27272a] rounded-lg p-3 text-xs min-w-[160px] shadow-xl">
-                      <p className="font-bold text-[#fafafa] mb-1">{bar.label}</p>
-                      <p className="text-[#a78bfa]">Acumulado: {fmtShort(Number(bar.accumulated))}</p>
-                      <p className="text-[#34d399]">Líquido: {fmtShort(Number(bar.net))}</p>
-                      <p className="text-[#ef4444]">Gastos: {fmtShort(Number(bar.expenses))}</p>
-                    </div>
-                    {/* Stacked bars — tallest in back, shorter in front */}
-                    <div className="relative w-full flex justify-center" style={{ height: `${Math.max(accH, expH, netH)}px` }}>
-                      {/* Accumulated (back — tallest) */}
-                      <div
-                        className="absolute bottom-0 rounded-t-md opacity-60 transition-all"
-                        style={{
-                          height: `${accH}px`,
-                          width: '90%',
-                          backgroundColor: '#a78bfa',
-                        }}
-                      />
-                      {/* Expenses (middle) */}
-                      <div
-                        className="absolute bottom-0 rounded-t-md transition-all"
-                        style={{
-                          height: `${expH}px`,
-                          width: '65%',
-                          backgroundColor: '#ef4444',
-                        }}
-                      />
-                      {/* Net (front — smallest) */}
-                      <div
-                        className="absolute bottom-0 rounded-t-md transition-all"
-                        style={{
-                          height: `${netH}px`,
-                          width: '40%',
-                          backgroundColor: Number(bar.net) >= 0 ? '#34d399' : '#ef4444',
-                        }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-bold uppercase text-[#a1a1aa]">{bar.label}</span>
-                  </div>
-                )
-              })
-            })()}
-          </div>
-        ) : (
-          <div className="h-[220px] flex items-center justify-center text-[#a1a1aa] text-sm">
-            Sem dados para o período
-          </div>
-        )}
-      </section>
-
       {/* ─── Summary Cards ──────────────────────────────────────────── */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-5 flex items-center gap-4">
@@ -277,26 +199,36 @@ export default function ExpensesPage() {
             <span className="material-symbols-outlined text-[#ef4444]">trending_down</span>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Total de Gastos no {mode === 'annual' ? 'Ano' : mode === 'monthly' ? 'Mês' : 'Semana'}</p>
-            <p className="text-xl font-black text-[#fafafa]">{fmt(Number(chart?.total_expenses ?? 0))}</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Total de Gastos {mode === 'annual' ? 'no Ano' : mode === 'monthly' ? 'no Mês' : 'na Semana'}</p>
+            <p className="text-xl font-black text-[#fafafa]">{fmt(totalExpenses)}</p>
           </div>
         </div>
         <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#f59e0b]/10 border border-[#f59e0b]/20 flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#f59e0b]">calculate</span>
+          <div className="w-12 h-12 rounded-xl bg-[#34d399]/10 border border-[#34d399]/20 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[#34d399]">trending_up</span>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Média {mode === 'annual' ? 'Mensal' : mode === 'monthly' ? 'Semanal' : 'Diária'}</p>
-            <p className="text-xl font-black text-[#fafafa]">{fmt(Number(chart?.monthly_average ?? 0))}</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Total de Receitas {mode === 'annual' ? 'no Ano' : mode === 'monthly' ? 'no Mês' : 'na Semana'}</p>
+            <p className="text-xl font-black text-[#fafafa]">{fmt(totalIncome)}</p>
           </div>
         </div>
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#a78bfa]/10 border border-[#a78bfa]/20 flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#a78bfa]">trophy</span>
+        <div className={`bg-[#0c0c0f] border rounded-xl p-5 flex items-center gap-4 ${
+          netResult >= 0 ? 'border-[#34d399]/30' : 'border-[#ef4444]/30'
+        }`}>
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+            netResult >= 0
+              ? 'bg-[#34d399]/10 border border-[#34d399]/20'
+              : 'bg-[#ef4444]/10 border border-[#ef4444]/20'
+          }`}>
+            <span className={`material-symbols-outlined ${netResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
+              {netResult >= 0 ? 'savings' : 'warning'}
+            </span>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">{mode === 'annual' ? 'Mês' : mode === 'monthly' ? 'Semana' : 'Dia'} com Maior Gasto</p>
-            <p className="text-xl font-black text-[#fafafa]">{chart?.highest_label || '—'}</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado (Receitas − Gastos)</p>
+            <p className={`text-xl font-black ${netResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
+              {fmt(netResult)}
+            </p>
           </div>
         </div>
       </section>
@@ -395,6 +327,90 @@ export default function ExpensesPage() {
           </div>
         ) : (
           <p className="text-sm text-[#a1a1aa] text-center py-8">Sem dados de categorias no período</p>
+        )}
+      </section>
+
+      {/* ─── Stacked Bar Chart (final da página) ────────────────────── */}
+      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#a78bfa]">bar_chart</span>
+            <h3 className="text-[#fafafa] font-bold">{chartTitle}</h3>
+          </div>
+          <div className="flex items-center gap-4">
+            {LEGEND_ITEMS.map((l) => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
+                <span className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {chart && chart.bars.length > 0 ? (
+          <div className="flex items-end justify-between gap-2 h-[220px]">
+            {(() => {
+              const maxVal = Math.max(
+                ...chart.bars.flatMap((b) => [
+                  Math.abs(Number(b.accumulated)),
+                  Number(b.expenses),
+                  Math.abs(Number(b.net)),
+                ]),
+                1,
+              )
+              return chart.bars.map((bar) => {
+                const accH = Math.max((Math.abs(Number(bar.accumulated)) / maxVal) * 200, 4)
+                const expH = Math.max((Number(bar.expenses) / maxVal) * 200, 4)
+                const netH = Math.max((Math.abs(Number(bar.net)) / maxVal) * 200, 4)
+                return (
+                  <div key={bar.label} className="flex-1 flex flex-col items-center gap-2 group relative">
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 hidden group-hover:block z-10 bg-[#18181b] border border-[#27272a] rounded-lg p-3 text-xs min-w-[160px] shadow-xl">
+                      <p className="font-bold text-[#fafafa] mb-1">{bar.label}</p>
+                      <p className="text-[#a78bfa]">Acumulado: {fmtShort(Number(bar.accumulated))}</p>
+                      <p className="text-[#34d399]">Líquido: {fmtShort(Number(bar.net))}</p>
+                      <p className="text-[#ef4444]">Gastos: {fmtShort(Number(bar.expenses))}</p>
+                    </div>
+                    {/* Stacked bars — tallest in back, shorter in front */}
+                    <div className="relative w-full flex justify-center" style={{ height: `${Math.max(accH, expH, netH)}px` }}>
+                      {/* Accumulated (back — tallest) */}
+                      <div
+                        className="absolute bottom-0 rounded-t-md opacity-60 transition-all"
+                        style={{
+                          height: `${accH}px`,
+                          width: '90%',
+                          backgroundColor: '#a78bfa',
+                        }}
+                      />
+                      {/* Expenses (middle) */}
+                      <div
+                        className="absolute bottom-0 rounded-t-md transition-all"
+                        style={{
+                          height: `${expH}px`,
+                          width: '65%',
+                          backgroundColor: '#ef4444',
+                        }}
+                      />
+                      {/* Net (front — smallest) */}
+                      <div
+                        className="absolute bottom-0 rounded-t-md transition-all"
+                        style={{
+                          height: `${netH}px`,
+                          width: '40%',
+                          backgroundColor: Number(bar.net) >= 0 ? '#34d399' : '#ef4444',
+                        }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase text-[#a1a1aa]">{bar.label}</span>
+                  </div>
+                )
+              })
+            })()}
+          </div>
+        ) : (
+          <div className="h-[220px] flex items-center justify-center text-[#a1a1aa] text-sm">
+            Sem dados para o período
+          </div>
         )}
       </section>
 
