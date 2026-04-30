@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import re
@@ -96,7 +97,7 @@ def parse_csv(file_path: Path) -> list[dict]:
 
 
 def extract_pdf_text(file_path: Path) -> str:
-    """Extract text from a PDF bank statement using pdfplumber."""
+    """Extract text from a PDF bank statement using pdfplumber (sync, blocking)."""
     import pdfplumber
 
     text_parts = []
@@ -106,6 +107,17 @@ def extract_pdf_text(file_path: Path) -> str:
             if text:
                 text_parts.append(text)
     return "\n\n".join(text_parts)
+
+
+async def extract_pdf_text_async(file_path: Path) -> str:
+    """Async wrapper that runs PDF extraction in a worker thread to avoid
+    blocking the event loop."""
+    return await asyncio.to_thread(extract_pdf_text, file_path)
+
+
+async def parse_csv_async(file_path: Path) -> list[dict]:
+    """Async wrapper for parse_csv to avoid blocking the event loop on large files."""
+    return await asyncio.to_thread(parse_csv, file_path)
 
 
 def _find_field(row: dict, candidates: list[str]) -> str | None:

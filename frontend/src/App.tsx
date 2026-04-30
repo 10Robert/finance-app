@@ -1,11 +1,21 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
-import DashboardPage from './pages/DashboardPage'
-import TransactionsPage from './pages/TransactionsPage'
-import SalaryPage from './pages/SalaryPage'
-import ExpensesPage from './pages/ExpensesPage'
-import SettingsPage from './pages/SettingsPage'
-import CreditCardsPage from './pages/CreditCardsPage'
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage'))
+const SalaryPage = lazy(() => import('./pages/SalaryPage'))
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const CreditCardsPage = lazy(() => import('./pages/CreditCardsPage'))
+
+function PageFallback() {
+  return (
+    <div className="flex items-center justify-center py-20 text-on-surface-variant text-sm">
+      <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
+      Carregando...
+    </div>
+  )
+}
 
 const navItems = [
   { to: '/', label: 'Painel', icon: 'dashboard' },
@@ -75,14 +85,16 @@ export default function App() {
           </button>
         )}
         <main className="p-8 max-w-7xl mx-auto w-full space-y-8 flex-1">
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/credit-cards" element={<CreditCardsPage />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            <Route path="/salary" element={<SalaryPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Routes>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
+              <Route path="/credit-cards" element={<CreditCardsPage />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/salary" element={<SalaryPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </div>

@@ -695,7 +695,7 @@ async def import_pdf_parse(
         shutil.copyfileobj(file.file, f)
 
     # Parse
-    pdf_text = parser_service.extract_pdf_text(file_path)
+    pdf_text = await parser_service.extract_pdf_text_async(file_path)
     if not pdf_text.strip():
         raise HTTPException(400, "Could not extract text from PDF")
 

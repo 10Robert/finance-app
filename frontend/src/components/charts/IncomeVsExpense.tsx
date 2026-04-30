@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import type { MonthlyTrend } from '../../types'
 
@@ -5,16 +6,20 @@ interface Props {
   data: MonthlyTrend[]
 }
 
-export default function IncomeVsExpenseChart({ data }: Props) {
-  const chartData = data.map((d) => ({
-    month: d.month,
-    Receita: Number(d.income),
-    Despesa: Number(d.expenses),
-    Saldo: Number(d.net),
-  }))
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+function IncomeVsExpenseChart({ data }: Props) {
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        month: d.month,
+        Receita: Number(d.income),
+        Despesa: Number(d.expenses),
+        Saldo: Number(d.net),
+      })),
+    [data],
+  )
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -30,3 +35,5 @@ export default function IncomeVsExpenseChart({ data }: Props) {
     </ResponsiveContainer>
   )
 }
+
+export default memo(IncomeVsExpenseChart)

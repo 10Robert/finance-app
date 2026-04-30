@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { Transaction } from '../types'
 
 const fmt = (v: number) =>
@@ -9,7 +10,7 @@ interface Props {
   icon: string
 }
 
-export default function TransactionListCard({ transactions, title, icon }: Props) {
+function TransactionListCard({ transactions, title, icon }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between px-2">
@@ -57,3 +58,5 @@ export default function TransactionListCard({ transactions, title, icon }: Props
     </div>
   )
 }
+
+export default memo(TransactionListCard)

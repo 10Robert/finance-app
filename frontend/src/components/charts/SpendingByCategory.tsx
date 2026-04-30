@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import type { SpendingByCategory } from '../../types'
 
@@ -11,14 +12,18 @@ interface Props {
   data: SpendingByCategory[]
 }
 
-export default function SpendingByCategoryChart({ data }: Props) {
-  const chartData = data.map((d) => ({
-    name: `${d.category_icon || ''} ${d.category_name}`.trim(),
-    value: Number(d.total),
-  }))
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+function SpendingByCategoryChart({ data }: Props) {
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        name: `${d.category_icon || ''} ${d.category_name}`.trim(),
+        value: Number(d.total),
+      })),
+    [data],
+  )
 
   return (
     <ResponsiveContainer width="100%" height={300}>
@@ -42,3 +47,5 @@ export default function SpendingByCategoryChart({ data }: Props) {
     </ResponsiveContainer>
   )
 }
+
+export default memo(SpendingByCategoryChart)

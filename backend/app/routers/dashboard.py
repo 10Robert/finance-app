@@ -401,29 +401,37 @@ MONTH_LABELS_PT = {
 @router.get("/chart-6months", response_model=list[ChartMonthOut])
 async def chart_6_months(db: AsyncSession = Depends(get_db)):
     today = date.today()
-    results = []
 
+    # Window: first day of the month 5 months ago.
+    y0, m0 = today.year, today.month - 5
+    while m0 <= 0:
+        m0 += 12
+        y0 -= 1
+    window_start = date(y0, m0, 1)
+
+    q = (
+        select(
+            extract("year", Transaction.date).label("y"),
+            extract("month", Transaction.date).label("m"),
+            func.coalesce(func.sum(func.abs(Transaction.amount)), Decimal(0)).label("total"),
+        )
+        .where(Transaction.type == "expense", Transaction.date >= window_start)
+        .group_by("y", "m")
+    )
+    rows = (await db.execute(q)).all()
+    totals_by_period = {(int(r.y), int(r.m)): r.total for r in rows}
+
+    results: list[ChartMonthOut] = []
     for i in range(5, -1, -1):
         m = today.month - i
         y = today.year
         while m <= 0:
             m += 12
             y -= 1
-
-        start, end = _get_month_range(y, m)
-        q = select(
-            func.coalesce(func.sum(func.abs(Transaction.amount)), 0).label("total"),
-        ).where(
-            Transaction.type == "expense",
-            Transaction.date >= start,
-            Transaction.date <= end,
-        )
-        row = (await db.execute(q)).one()
         results.append(ChartMonthOut(
             month_label=MONTH_LABELS_PT[m],
-            total=row.total,
+            total=totals_by_period.get((y, m), Decimal(0)),
         ))
-
     return results
 
 
@@ -487,13 +495,28 @@ async def transactions_grouped(
     result = await db.execute(q)
     txns = result.scalars().all()
 
-    one_time = [t for t in txns if not t.is_recurring and not (t.source or "").startswith("fixed_")]
-    recurring = [t for t in txns if t.is_recurring or (t.source or "").startswith("fixed_")]
+    one_time: list[Transaction] = []
+    recurring: list[Transaction] = []
+    for t in txns:
+        if t.is_recurring or (t.source or "").startswith("fixed_"):
+            recurring.append(t)
+        else:
+            one_time.append(t)
 
     return TransactionGroupedOut(one_time=one_time, recurring=recurring)
 
 
 # --- Expenses Chart (stacked bar) ---
+_INC_SUM = func.coalesce(
+    func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))),
+    Decimal(0),
+).label("inc")
+_EXP_SUM = func.coalesce(
+    func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))),
+    Decimal(0),
+).label("exp")
+
+
 @router.get("/expenses-chart", response_model=ExpensesChartOut)
 async def expenses_chart(
     mode: str = Query("annual"),  # "annual", "monthly", "weekly"
@@ -507,69 +530,84 @@ async def expenses_chart(
     bars: list[ExpensesChartBar] = []
 
     if mode == "monthly" and year and month:
-        # Daily bars for the month
+        # 4 weekly-ish segments — single query, bucket via CASE.
         start, end = _get_month_range(year, month)
         import calendar
         num_days = calendar.monthrange(year, month)[1]
-        # Group into ~4 weekly segments
-        segments = []
         seg_size = max(num_days // 4, 7)
-        for seg_i in range(4):
-            seg_start = start + timedelta(days=seg_i * seg_size)
-            if seg_i == 3:
-                seg_end = end
-            else:
-                seg_end = start + timedelta(days=(seg_i + 1) * seg_size - 1)
-            segments.append((seg_start, seg_end, f"Sem {seg_i + 1}"))
+
+        seg1_end = start + timedelta(days=seg_size - 1)
+        seg2_end = start + timedelta(days=2 * seg_size - 1)
+        seg3_end = start + timedelta(days=3 * seg_size - 1)
+
+        seg_expr = case(
+            (Transaction.date <= seg1_end, 0),
+            (Transaction.date <= seg2_end, 1),
+            (Transaction.date <= seg3_end, 2),
+            else_=3,
+        ).label("seg")
+
+        q = (
+            select(seg_expr, _INC_SUM, _EXP_SUM)
+            .where(Transaction.date >= start, Transaction.date <= end)
+            .group_by("seg")
+        )
+        rows = (await db.execute(q)).all()
+        agg = {int(r.seg): (r.inc, r.exp) for r in rows}
 
         accumulated = Decimal(0)
-        for seg_start, seg_end, label in segments:
-            q = select(
-                func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("inc"),
-                func.coalesce(func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))), 0).label("exp"),
-            ).where(Transaction.date >= seg_start, Transaction.date <= seg_end)
-            row = (await db.execute(q)).one()
-            net = row.inc - row.exp
+        for seg_i in range(4):
+            inc, exp = agg.get(seg_i, (Decimal(0), Decimal(0)))
+            net = inc - exp
             accumulated += net
             bars.append(ExpensesChartBar(
-                label=label, income=row.inc, expenses=row.exp, net=net, accumulated=accumulated,
+                label=f"Sem {seg_i + 1}", income=inc, expenses=exp, net=net, accumulated=accumulated,
             ))
 
     elif mode == "weekly" and week_start:
-        # 7 daily bars
-        accumulated = Decimal(0)
+        # 7 daily bars — single query grouped by date.
+        week_end = week_start + timedelta(days=6)
+        q = (
+            select(Transaction.date.label("d"), _INC_SUM, _EXP_SUM)
+            .where(Transaction.date >= week_start, Transaction.date <= week_end)
+            .group_by(Transaction.date)
+        )
+        rows = (await db.execute(q)).all()
+        agg = {r.d: (r.inc, r.exp) for r in rows}
+
         DAYS_PT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+        accumulated = Decimal(0)
         for i in range(7):
             d = week_start + timedelta(days=i)
-            q = select(
-                func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("inc"),
-                func.coalesce(func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))), 0).label("exp"),
-            ).where(Transaction.date == d)
-            row = (await db.execute(q)).one()
-            net = row.inc - row.exp
+            inc, exp = agg.get(d, (Decimal(0), Decimal(0)))
+            net = inc - exp
             accumulated += net
             bars.append(ExpensesChartBar(
-                label=DAYS_PT[i], income=row.inc, expenses=row.exp, net=net, accumulated=accumulated,
+                label=DAYS_PT[i], income=inc, expenses=exp, net=net, accumulated=accumulated,
             ))
 
     else:
-        # Annual: 12 monthly bars
+        # Annual: 12 monthly bars — single query grouped by month.
         y = year or today.year
+        year_start, year_end = _get_year_range(y)
+        q = (
+            select(extract("month", Transaction.date).label("m"), _INC_SUM, _EXP_SUM)
+            .where(Transaction.date >= year_start, Transaction.date <= year_end)
+            .group_by("m")
+        )
+        rows = (await db.execute(q)).all()
+        agg = {int(r.m): (r.inc, r.exp) for r in rows}
+
         accumulated = Decimal(0)
         for m in range(1, 13):
-            m_start, m_end = _get_month_range(y, m)
-            q = select(
-                func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("inc"),
-                func.coalesce(func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))), 0).label("exp"),
-            ).where(Transaction.date >= m_start, Transaction.date <= m_end)
-            row = (await db.execute(q)).one()
-            net = row.inc - row.exp
+            inc, exp = agg.get(m, (Decimal(0), Decimal(0)))
+            net = inc - exp
             accumulated += net
             bars.append(ExpensesChartBar(
-                label=MONTH_LABELS_PT[m], income=row.inc, expenses=row.exp, net=net, accumulated=accumulated,
+                label=MONTH_LABELS_PT[m], income=inc, expenses=exp, net=net, accumulated=accumulated,
             ))
 
-    total_expenses = sum(b.expenses for b in bars)
+    total_expenses = sum((b.expenses for b in bars), Decimal(0))
     num_bars = len(bars) or 1
     monthly_average = total_expenses / num_bars
     highest = max(bars, key=lambda b: b.expenses) if bars else None
@@ -591,9 +629,11 @@ async def category_transactions(
     end_date: Optional[date] = None,
     year: Optional[int] = None,
     month: Optional[int] = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return all expense transactions for a given category in a date range."""
+    """Return expense transactions for a given category in a date range (paginated)."""
     if start_date and end_date:
         start, end = start_date, end_date
     else:
@@ -613,6 +653,8 @@ async def category_transactions(
             Transaction.date <= end,
         )
         .order_by(Transaction.date.desc())
+        .limit(limit)
+        .offset(offset)
     )
     result = await db.execute(q)
     return result.scalars().all()

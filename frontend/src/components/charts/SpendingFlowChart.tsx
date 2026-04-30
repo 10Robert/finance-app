@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import type { SpendingFlowPoint } from '../../types'
 
@@ -5,14 +6,14 @@ interface Props {
   data: SpendingFlowPoint[]
 }
 
-export default function SpendingFlowChart({ data }: Props) {
-  const chartData = data.map((d) => ({
-    label: d.label,
-    amount: Number(d.amount),
-  }))
+const fmt = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+function SpendingFlowChart({ data }: Props) {
+  const chartData = useMemo(
+    () => data.map((d) => ({ label: d.label, amount: Number(d.amount) })),
+    [data],
+  )
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -58,3 +59,5 @@ export default function SpendingFlowChart({ data }: Props) {
     </ResponsiveContainer>
   )
 }
+
+export default memo(SpendingFlowChart)

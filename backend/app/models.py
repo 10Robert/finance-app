@@ -43,6 +43,7 @@ class Transaction(Base):
         Index("idx_transactions_date", "date"),
         Index("idx_transactions_category", "category_id"),
         Index("idx_transactions_type", "type"),
+        Index("idx_transactions_date_type", "date", "type"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -111,6 +112,9 @@ class MonthlyEntry(Base):
 
 class Discount(Base):
     __tablename__ = "discounts"
+    __table_args__ = (
+        Index("idx_discounts_salary_config", "salary_config_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     salary_config_id: Mapped[int] = mapped_column(ForeignKey("salary_configs.id", ondelete="CASCADE"))
@@ -124,6 +128,9 @@ class Discount(Base):
 
 class OvertimeEntry(Base):
     __tablename__ = "overtime_entries"
+    __table_args__ = (
+        Index("idx_overtime_config_period", "salary_config_id", "month", "year"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     salary_config_id: Mapped[int] = mapped_column(ForeignKey("salary_configs.id", ondelete="CASCADE"))
@@ -173,6 +180,9 @@ class InstallmentPurchase(Base):
 
 class StagedTransaction(Base):
     __tablename__ = "staged_transactions"
+    __table_args__ = (
+        Index("idx_staged_import_accepted", "bank_import_id", "accepted"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     bank_import_id: Mapped[int] = mapped_column(ForeignKey("bank_imports.id", ondelete="CASCADE"))
@@ -264,6 +274,7 @@ class Income(Base):
     __tablename__ = "incomes"
     __table_args__ = (
         UniqueConstraint("reference_month", "reference_year", name="uq_income_month_year"),
+        Index("idx_income_period", "reference_year", "reference_month"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
