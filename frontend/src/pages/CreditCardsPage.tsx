@@ -1,9 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
-  LineChart, Line,
-} from 'recharts'
 import {
   getCreditCards,
   createCreditCard,
@@ -18,7 +14,6 @@ import {
   getCreditCardBillMonths,
   getCreditCardBill,
   getCreditCardByCategory,
-  getCreditCardByType,
   getCreditCardDailySpend,
   importCreditCardPdf,
   bulkCreateCreditCardExpenses,
@@ -30,10 +25,10 @@ import type {
   CreditCardBillItem,
   CreditCardExpense,
   CreditCardImportPreviewItem,
+  CreditCardMonthSummary,
+  CreditCardDailySpend,
   Category as CategoryType,
 } from '../types'
-
-type PeriodMode = 'annual' | 'monthly'
 
 const PT_MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -43,9 +38,9 @@ const PT_MONTHS_SHORT = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ]
 
-const PIE_COLORS = [
-  '#a78bfa', '#34d399', '#ef4444', '#f59e0b', '#3b82f6',
-  '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#71717a',
+const TREEMAP_COLORS = [
+  '#a78bfa', '#3b82f6', '#34d399', '#67e8f9',
+  '#fbbf24', '#e879f9', '#f87171', '#f97316',
 ]
 
 const CARD_COLORS = [
@@ -53,11 +48,23 @@ const CARD_COLORS = [
   '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#71717a',
 ]
 
+const ACCENT = '#a78bfa'
+const SUCCESS = '#34d399'
+const INFO = '#3b82f6'
+
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
-const fmtShort = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v)
+const fmtShort = (v: number) => {
+  const abs = Math.abs(v)
+  if (abs >= 1000) return 'R$ ' + (v / 1000).toFixed(1).replace('.', ',') + 'k'
+  return 'R$ ' + v.toFixed(0)
+}
+
+const fmtDateBR = (iso: string) => {
+  const d = new Date(iso + 'T00:00:00')
+  return `${String(d.getDate()).padStart(2, '0')} ${PT_MONTHS_SHORT[d.getMonth()].toLowerCase()} ${d.getFullYear()}`
+}
 
 const todayIso = () => {
   const d = new Date()
@@ -70,7 +77,6 @@ export default function CreditCardsPage() {
   const qc = useQueryClient()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
-  const [mode, setMode] = useState<PeriodMode>('annual')
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
 
   /* ── data ── */
@@ -84,28 +90,17 @@ export default function CreditCardsPage() {
     queryKey: ['cc-bill-months', year],
     queryFn: () => getCreditCardBillMonths(year),
   })
-  const byCategoryParams = mode === 'monthly' ? { year, month: selectedMonth } : { year }
   const { data: byCategory = [] } = useQuery({
-    queryKey: ['cc-by-category', year, mode === 'monthly' ? selectedMonth : 'all'],
-    queryFn: () => getCreditCardByCategory(byCategoryParams),
-  })
-  const { data: byType } = useQuery({
-    queryKey: ['cc-by-type', year],
-    queryFn: () => getCreditCardByType(year),
+    queryKey: ['cc-by-category', year, selectedMonth],
+    queryFn: () => getCreditCardByCategory({ year, month: selectedMonth }),
   })
   const { data: dailySpend = [] } = useQuery({
     queryKey: ['cc-daily', year, selectedMonth],
     queryFn: () => getCreditCardDailySpend(year, selectedMonth),
-    enabled: mode === 'monthly',
   })
   const { data: monthBill = [] } = useQuery({
     queryKey: ['cc-bill', year, selectedMonth],
     queryFn: () => getCreditCardBill(year, selectedMonth),
-    enabled: mode === 'monthly',
-  })
-  const { data: allExpenses = [] } = useQuery({
-    queryKey: ['cc-expenses'],
-    queryFn: () => fetch('/api/credit-cards/expenses').then((r) => r.json()) as Promise<CreditCardExpense[]>,
   })
 
   const totalLimit = cards.reduce((acc, c) => acc + Number(c.credit_limit), 0)
@@ -117,7 +112,10 @@ export default function CreditCardsPage() {
   const [cardEdit, setCardEdit] = useState<CreditCard | null>(null)
   const [billOpen, setBillOpen] = useState<{ year: number; month: number } | null>(null)
   const [pdfImportOpen, setPdfImportOpen] = useState(false)
-  const [allExpensesOpen, setAllExpensesOpen] = useState(false)
+  const [addTxOpen, setAddTxOpen] = useState(false)
+  const [monthDetailOpen, setMonthDetailOpen] = useState<CreditCardMonthSummary | null>(null)
+  const [txDetailOpen, setTxDetailOpen] = useState<CreditCardBillItem | null>(null)
+  const [editExpenseOpen, setEditExpenseOpen] = useState<CreditCardBillItem | null>(null)
 
   /* ── invalidate helper ── */
   const invalidateAll = () => {
@@ -128,7 +126,6 @@ export default function CreditCardsPage() {
     qc.invalidateQueries({ queryKey: ['cc-daily'] })
     qc.invalidateQueries({ queryKey: ['cc-expenses'] })
     qc.invalidateQueries({ queryKey: ['cc-bill'] })
-    // Also invalidate global expense queries because mirrors changed.
     qc.invalidateQueries({ queryKey: ['expenses-chart'] })
     qc.invalidateQueries({ queryKey: ['top-categories'] })
     qc.invalidateQueries({ queryKey: ['transactions-grouped'] })
@@ -136,71 +133,29 @@ export default function CreditCardsPage() {
     qc.invalidateQueries({ queryKey: ['balance'] })
   }
 
-  /* ── month carousel scroll to current month on load ── */
-  const currentMonthIdx = year === now.getFullYear() ? now.getMonth() : 0
-
-  /* ── annual chart data ── */
-  const annualChartData = useMemo(
-    () =>
-      monthSummaries.map((m) => ({
-        label: PT_MONTHS_SHORT[m.bill_month - 1],
-        value: Number(m.total),
-        installment: Number(m.installment_total),
-        subscription: Number(m.subscription_total),
-        oneTime: Number(m.one_time_total),
-      })),
-    [monthSummaries],
-  )
-
-  /* ── carousel scroll (drag + arrows) ── */
-  const carouselRef = useRef<HTMLDivElement | null>(null)
-  const drag = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false })
-  const onCarouselDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!carouselRef.current) return
-    drag.current = {
-      active: true,
-      startX: e.pageX - carouselRef.current.offsetLeft,
-      scrollLeft: carouselRef.current.scrollLeft,
-      moved: false,
-    }
-    carouselRef.current.style.cursor = 'grabbing'
-  }
-  const onCarouselMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!drag.current.active || !carouselRef.current) return
-    const x = e.pageX - carouselRef.current.offsetLeft
-    const dx = x - drag.current.startX
-    if (Math.abs(dx) > 4) drag.current.moved = true
-    carouselRef.current.scrollLeft = drag.current.scrollLeft - dx
-  }
-  const onCarouselUp = () => {
-    drag.current.active = false
-    if (carouselRef.current) carouselRef.current.style.cursor = 'grab'
-  }
-  const scrollCarousel = (dir: 1 | -1) => {
-    if (!carouselRef.current) return
-    carouselRef.current.scrollBy({ left: dir * 220, behavior: 'smooth' })
-  }
-
-  const selectedSummary = monthSummaries.find((m) => m.bill_month === selectedMonth)
-
-  /* ── filtro do painel de lançamentos (avulsos / parcelados / assinaturas) ── */
+  /* ── filtros de lançamentos ── */
   const [expenseFilter, setExpenseFilter] = useState<
     'all' | 'one_time' | 'installment' | 'subscription'
   >('all')
 
-  const filteredExpenses = useMemo(() => {
-    let list = allExpenses
+  const filteredBill = useMemo(() => {
+    let list = monthBill
     if (expenseFilter === 'subscription') list = list.filter((e) => e.is_subscription)
     else if (expenseFilter === 'installment')
       list = list.filter((e) => !e.is_subscription && e.installment_count > 1)
     else if (expenseFilter === 'one_time')
       list = list.filter((e) => !e.is_subscription && e.installment_count === 1)
-    return expenseFilter === 'subscription' ? list : list.slice(0, 10)
-  }, [allExpenses, expenseFilter])
+    return [...list].sort(
+      (a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime(),
+    )
+  }, [monthBill, expenseFilter])
+
+  const noCards = cards.length === 0
+  const activeIdx = selectedMonth - 1
 
   return (
-    <div className="space-y-8">
-      {/* Header / year selector */}
+    <div className="space-y-6">
+      {/* Topbar */}
       <header className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-on-surface">Cartão de Crédito</h1>
@@ -208,578 +163,296 @@ export default function CreditCardsPage() {
             Gerencie cartões, faturas, parcelas e assinaturas
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Period filter */}
-          <div className="flex border border-outline-variant rounded-lg overflow-hidden">
-            <button
-              onClick={() => setMode('annual')}
-              className={`px-4 py-2 text-sm transition-colors ${
-                mode === 'annual'
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
-              }`}
-            >
-              Anual
-            </button>
-            <button
-              onClick={() => setMode('monthly')}
-              className={`px-4 py-2 text-sm transition-colors ${
-                mode === 'monthly'
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
-              }`}
-            >
-              Mensal
-            </button>
-          </div>
-
-          {/* Month picker (monthly mode only) */}
-          {mode === 'monthly' && (
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="px-3 py-2 text-sm rounded-lg border border-outline-variant bg-surface-container text-on-surface"
-            >
-              {PT_MONTHS.map((m, i) => (
-                <option key={i + 1} value={i + 1}>{m}</option>
-              ))}
-            </select>
-          )}
-
-          {/* Year nav */}
-          <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 border border-outline-variant rounded-lg px-1">
             <button
               onClick={() => setYear(year - 1)}
-              className="w-10 h-10 rounded-lg border border-outline-variant hover:bg-surface-container-high"
+              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-surface-container-high"
+              aria-label="Ano anterior"
             >
-              <span className="material-symbols-outlined text-on-surface-variant">chevron_left</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_left</span>
             </button>
-            <span className="text-on-surface font-medium px-3">{year}</span>
+            <span className="text-on-surface font-medium px-2 tabular-nums">{year}</span>
             <button
               onClick={() => setYear(year + 1)}
-              className="w-10 h-10 rounded-lg border border-outline-variant hover:bg-surface-container-high"
+              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-surface-container-high"
+              aria-label="Próximo ano"
             >
-              <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_right</span>
             </button>
           </div>
+          <button
+            onClick={() => setPdfImportOpen(true)}
+            disabled={noCards}
+            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50"
+            title={noCards ? 'Cadastre um cartão primeiro' : ''}
+          >
+            <span className="material-symbols-outlined text-base">description</span>
+            Importar Fatura
+          </button>
+          <button
+            onClick={() => setAddTxOpen(true)}
+            disabled={noCards}
+            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-base">add</span>
+            Lançar Gasto
+          </button>
         </div>
       </header>
 
-      {/* Annual mode: Resumo Mensal + line chart below */}
-      {mode === 'annual' && (
-        <section>
+      {/* Resumo Mensal */}
+      <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-on-surface">Resumo Mensal</h2>
+          <div className="text-xs text-on-surface-variant">Clique em um mês para ver os detalhes</div>
+        </div>
+        <MonthStrip
+          data={monthSummaries}
+          activeIdx={activeIdx}
+          onSelect={(i) => {
+            setSelectedMonth(i + 1)
+            setMonthDetailOpen(monthSummaries[i] || null)
+          }}
+        />
+      </section>
+
+      {/* Cartões + Heatmap */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <section className="lg:col-span-3 bg-surface-container border border-outline-variant rounded-xl p-5">
           <header className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-medium text-on-surface">Resumo Mensal</h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => scrollCarousel(-1)}
-                className="w-9 h-9 rounded-lg border border-outline-variant hover:bg-surface-container-high"
-                aria-label="Anterior"
-              >
-                <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_left</span>
-              </button>
-              <button
-                onClick={() => scrollCarousel(1)}
-                className="w-9 h-9 rounded-lg border border-outline-variant hover:bg-surface-container-high"
-                aria-label="Próximo"
-              >
-                <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_right</span>
-              </button>
-            </div>
+            <h2 className="text-sm font-semibold text-on-surface">Meus Cartões</h2>
+            <button
+              onClick={() => { setCardEdit(null); setCardFormOpen(true) }}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+              Novo Cartão
+            </button>
           </header>
-          <div
-            ref={carouselRef}
-            onMouseDown={onCarouselDown}
-            onMouseMove={onCarouselMove}
-            onMouseUp={onCarouselUp}
-            onMouseLeave={onCarouselUp}
-            className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 select-none cc-carousel"
-            style={{ cursor: 'grab' }}
-          >
-            {monthSummaries.map((m, i) => {
-              const isCurrent = i === currentMonthIdx
-              const isFuture = year > now.getFullYear() || (year === now.getFullYear() && m.bill_month > now.getMonth() + 1)
-              const isEmpty = m.item_count === 0
+          <div className="space-y-2.5">
+            {cards.length === 0 && (
+              <p className="text-sm text-on-surface-variant text-center py-8">
+                Nenhum cartão cadastrado.
+              </p>
+            )}
+            {cards.map((c) => {
+              const used = Number(c.used_amount)
+              const limit = Number(c.credit_limit)
+              const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0
               return (
-                <button
-                  key={m.bill_month}
-                  onClick={(e) => {
-                    if (drag.current.moved) { e.preventDefault(); return }
-                    setBillOpen({ year: m.bill_year, month: m.bill_month })
-                  }}
-                  className={`flex-shrink-0 w-44 text-left rounded-xl border p-4 transition-all ${
-                    isCurrent
-                      ? 'bg-primary text-on-primary border-primary'
-                      : 'bg-surface-container border-outline-variant hover:border-primary/50'
-                  }`}
+                <div
+                  key={c.id}
+                  className="grid items-center gap-3 p-3.5 rounded-xl border border-outline-variant bg-surface-container-low"
+                  style={{ gridTemplateColumns: 'auto 1fr auto' }}
                 >
-                  <p className={`text-xs ${isCurrent ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
-                    {PT_MONTHS[m.bill_month - 1]}
-                  </p>
-                  <p className={`text-xl font-semibold mt-1 ${isCurrent ? 'text-on-primary' : 'text-on-surface'}`}>
-                    {fmt(Number(m.total))}
-                  </p>
-                  <p className={`text-[11px] mt-2 flex items-center gap-1 ${isCurrent ? 'text-on-primary/80' : 'text-on-surface-variant'}`}>
-                    {isEmpty ? (
-                      <>
-                        <span className="material-symbols-outlined text-sm">lock</span>
-                        {isFuture ? 'Não iniciado' : '—'}
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined text-sm">receipt_long</span>
-                        {m.item_count} item{m.item_count !== 1 ? 's' : ''}
-                      </>
-                    )}
-                  </p>
-                </button>
+                  <div
+                    className="w-9 h-9 rounded-md flex items-center justify-center"
+                    style={{ backgroundColor: c.color }}
+                  >
+                    <span className="material-symbols-outlined text-sm text-white">credit_card</span>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                      <div className="text-sm font-semibold text-on-surface truncate">{c.name}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-on-surface-variant">
+                        {c.brand || '—'} · Fechamento dia {c.closing_day}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex-1 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${pct}%`, background: c.color }}
+                        />
+                      </div>
+                      <div className="text-[10px] text-on-surface-variant tabular-nums whitespace-nowrap">
+                        {fmt(used)} / {fmt(limit)}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setCardEdit(c); setCardFormOpen(true) }}
+                    className="w-8 h-8 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high"
+                    aria-label="Editar cartão"
+                  >
+                    <span className="material-symbols-outlined text-base">edit</span>
+                  </button>
+                </div>
               )
             })}
           </div>
 
-          {/* Line chart of monthly totals */}
-          <div className="mt-6 bg-surface-container border border-outline-variant rounded-xl p-5">
-            <h3 className="text-sm font-medium text-on-surface mb-3">Evolução mensal</h3>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={annualChartData}>
-                  <CartesianGrid stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
-                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                    formatter={(v: number) => fmt(v)}
-                    labelStyle={{ color: '#fafafa' }}
-                  />
-                  <Line type="monotone" dataKey="value" stroke="#a78bfa" strokeWidth={2} dot={{ fill: '#a78bfa', r: 4 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Monthly mode: single big card + line chart + ações */}
-      {mode === 'monthly' && (
-        <section className="space-y-6">
-          <div className="bg-surface-container border border-outline-variant rounded-xl p-6">
-            <div className="flex items-start justify-between flex-wrap gap-4">
-              <div>
-                <p className="text-xs text-on-surface-variant uppercase tracking-wide">
-                  {PT_MONTHS[selectedMonth - 1]} {year}
-                </p>
-                <p className="text-3xl font-semibold text-on-surface mt-1">
-                  {fmt(Number(selectedSummary?.total || 0))}
-                </p>
-                <p className="text-xs text-on-surface-variant mt-2">
-                  {selectedSummary?.item_count || 0} lançamento{(selectedSummary?.item_count || 0) !== 1 ? 's' : ''}
-                  {Number(selectedSummary?.refunded_total || 0) > 0 && (
-                    <span className="text-tertiary ml-2">
-                      · {fmt(Number(selectedSummary!.refunded_total))} reembolsado
-                    </span>
-                  )}
-                </p>
+          {cards.length > 0 && (
+            <div
+              className="mt-4 p-4 rounded-xl border"
+              style={{
+                background: `linear-gradient(135deg, ${ACCENT}1f, transparent)`,
+                borderColor: `${ACCENT}38`,
+              }}
+            >
+              <div className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5">
+                Limite total consolidado
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setAllExpensesOpen(true)}
-                  className="px-4 py-2 text-sm rounded-lg border border-primary text-primary hover:bg-primary/10 flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-base">list</span>
-                  Ver todos os gastos
-                </button>
-                <button
-                  onClick={() => setBillOpen({ year, month: selectedMonth })}
-                  className="px-4 py-2 text-sm rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-base">edit</span>
-                  Editar fatura
-                </button>
-              </div>
-            </div>
-
-            {/* Daily line chart for the selected month */}
-            <div className="h-48 mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dailySpend.map((d) => ({ label: String(d.day).padStart(2, '0'), value: Number(d.total) }))}>
-                  <CartesianGrid stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 11 }} tickFormatter={fmtShort} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                    formatter={(v: number) => fmt(v)}
-                    labelStyle={{ color: '#fafafa' }}
-                  />
-                  <Line type="monotone" dataKey="value" stroke="#a78bfa" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Two-column area */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* LEFT — Cartões */}
-        <div className="lg:col-span-3 space-y-6">
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <header className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 className="text-base font-medium text-on-surface">Meus Cartões</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPdfImportOpen(true)}
-                  disabled={cards.length === 0}
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50"
-                  title={cards.length === 0 ? 'Cadastre um cartão primeiro' : ''}
-                >
-                  <span className="material-symbols-outlined text-base">upload_file</span>
-                  Importar Fatura PDF
-                </button>
-                <button
-                  onClick={() => { setCardEdit(null); setCardFormOpen(true) }}
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-primary text-primary hover:bg-primary/10"
-                >
-                  <span className="material-symbols-outlined text-base">add</span>
-                  Cadastrar Novo Cartão
-                </button>
-              </div>
-            </header>
-            <div className="space-y-3">
-              {cards.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center py-8">
-                  Nenhum cartão cadastrado.
-                </p>
-              )}
-              {cards.map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-center gap-4 p-4 rounded-lg border border-outline-variant bg-surface-container-low"
-                >
-                  <div
-                    className="w-10 h-10 rounded flex items-center justify-center"
-                    style={{ backgroundColor: c.color }}
-                  >
-                    <span className="material-symbols-outlined text-on-primary">credit_card</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-on-surface">{c.name}</p>
-                    <p className="text-xs text-on-surface-variant uppercase tracking-wide mt-0.5">
-                      Limite: {fmt(Number(c.credit_limit))}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-on-surface-variant">Fechamento</p>
-                    <p className="text-sm font-medium text-on-surface">Dia {c.closing_day}</p>
-                  </div>
-                  <button
-                    onClick={() => { setCardEdit(c); setCardFormOpen(true) }}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
-                  >
-                    Editar
-                  </button>
+              <div className="flex items-baseline gap-2.5 mb-2 flex-wrap">
+                <div className="text-2xl font-semibold tabular-nums tracking-tight text-on-surface">
+                  {fmt(totalLimit)}
                 </div>
-              ))}
-            </div>
-
-            {/* Limit consolidated */}
-            {cards.length > 0 && (
-              <div className="mt-5 p-4 rounded-lg border border-outline-variant bg-surface-container-low">
-                <p className="text-xs text-on-surface-variant uppercase tracking-wide">
-                  Limite Total Consolidado
-                </p>
-                <p className="text-2xl font-semibold text-on-surface mt-1">
-                  {fmt(totalLimit)}{' '}
-                  <span className="text-sm font-normal text-on-surface-variant">
-                    utilizado: {fmt(totalUsed)}
-                  </span>
-                </p>
-                <div className="h-2 rounded bg-surface-container-highest mt-3 overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded"
-                    style={{ width: `${limitPercent}%` }}
-                  />
+                <div className="text-xs text-on-surface-variant">
+                  utilizado:{' '}
+                  <span className="text-primary tabular-nums">{fmt(totalUsed)}</span>
                 </div>
               </div>
-            )}
-          </section>
-
-          {/* Lançamentos (avulsos + parcelados + assinaturas) */}
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <header className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <h2 className="text-base font-medium text-on-surface">Lançamentos</h2>
-              <div className="flex border border-outline-variant rounded-lg overflow-hidden text-xs">
-                {([
-                  ['all', 'Todos'],
-                  ['one_time', 'Avulsos'],
-                  ['installment', 'Parcelados'],
-                  ['subscription', 'Assinaturas'],
-                ] as const).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => setExpenseFilter(k)}
-                    className={`px-3 py-1.5 transition-colors ${
-                      expenseFilter === k
-                        ? 'bg-primary text-on-primary'
-                        : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+                <div className="h-full bg-primary rounded-full transition-all duration-700" style={{ width: `${limitPercent}%` }} />
               </div>
-            </header>
-            <div className="space-y-2">
-              {filteredExpenses.length === 0 && (
-                <p className="text-sm text-on-surface-variant text-center py-6">
-                  {expenseFilter === 'subscription'
-                    ? 'Nenhuma assinatura. Marque "Assinatura?" ao lançar um gasto.'
-                    : 'Nenhum lançamento encontrado.'}
-                </p>
-              )}
-              {filteredExpenses.map((e) => {
-                const card = cards.find((c) => c.id === e.credit_card_id)
-                const isSub = e.is_subscription
-                const isInstallment = !isSub && e.installment_count > 1
-                const tag = isSub
-                  ? 'Assinatura'
-                  : isInstallment
-                  ? `Parcelado ${e.installment_count}x`
-                  : 'Avulso'
-                const iconName = isSub
-                  ? 'subscriptions'
-                  : isInstallment
-                  ? 'splitscreen'
-                  : 'receipt_long'
-                const iconColor = isSub
-                  ? 'text-tertiary'
-                  : isInstallment
-                  ? 'text-primary'
-                  : 'text-on-surface-variant'
-                return (
-                  <div
-                    key={e.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant bg-surface-container-low"
-                  >
-                    <span className={`material-symbols-outlined ${iconColor}`}>
-                      {e.category?.icon || iconName}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-on-surface truncate">
-                        {e.description}
-                      </p>
-                      <p className="text-xs text-on-surface-variant truncate">
-                        {card?.name || '—'} · {e.category?.name || 'Sem categoria'} · {tag}
-                      </p>
-                    </div>
-                    <p
-                      className={`text-sm font-medium whitespace-nowrap ${
-                        e.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'
-                      }`}
-                    >
-                      {isSub ? `${fmt(Number(e.amount))}/mês` : `- ${fmt(Number(e.amount))}`}
-                    </p>
-                    <button
-                      onClick={() => {
-                        const msg = isSub
-                          ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
-                          : 'Remover este lançamento?'
-                        if (confirm(msg))
-                          deleteCreditCardExpense(e.id).then(invalidateAll)
-                      }}
-                      className="text-on-surface-variant hover:text-error"
-                      title="Remover"
-                    >
-                      <span className="material-symbols-outlined text-base">delete</span>
-                    </button>
-                  </div>
-                )
-              })}
+              <div className="text-[10px] text-on-surface-variant tabular-nums mt-1.5">
+                {Math.round(limitPercent)}% utilizado · {fmt(totalLimit - totalUsed)} disponível
+              </div>
             </div>
-          </section>
-        </div>
+          )}
+        </section>
 
-        {/* RIGHT — Lançar Gasto */}
-        <div className="lg:col-span-2 space-y-6">
-          <ExpenseForm
-            cards={cards}
-            categories={expenseCategories}
-            onCreated={invalidateAll}
-          />
-        </div>
+        <section className="lg:col-span-2 bg-surface-container border border-outline-variant rounded-xl p-5">
+          <SpendHeatmap days={dailySpend} year={year} month={selectedMonth} />
+        </section>
       </div>
 
-      {/* Charts */}
-      {mode === 'annual' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <h2 className="text-base font-medium text-on-surface mb-4">
-              Gasto Anual por Tipo ({year})
-            </h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={annualChartData}>
-                  <CartesianGrid stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
-                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                    formatter={(v: number) => fmt(v)}
-                    labelStyle={{ color: '#fafafa' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
-                  <Bar dataKey="oneTime" stackId="a" fill="#3b82f6" name="Avulsos" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="installment" stackId="a" fill="#a78bfa" name="Parcelados" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="subscription" stackId="a" fill="#34d399" name="Assinaturas" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+      {/* Lançamentos */}
+      <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
+        <header className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <div>
+            <h2 className="text-sm font-semibold text-on-surface">Lançamentos</h2>
+            <div className="text-xs text-on-surface-variant mt-0.5">
+              Fatura de {PT_MONTHS[selectedMonth - 1]} {year}
             </div>
-          </section>
+          </div>
+          <div className="flex border border-outline-variant rounded-lg overflow-hidden text-xs">
+            {([
+              ['all', 'Todos'],
+              ['one_time', 'Avulsos'],
+              ['installment', 'Parcelados'],
+              ['subscription', 'Assinaturas'],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setExpenseFilter(k)}
+                className={`px-3 py-1.5 transition-colors ${
+                  expenseFilter === k
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </header>
 
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <h2 className="text-base font-medium text-on-surface mb-4">Por Categoria ({year})</h2>
-            <div className="h-64">
-              {byCategory.length === 0 ? (
-                <p className="text-sm text-on-surface-variant text-center pt-20">Sem dados.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={byCategory.map((c) => ({ name: c.category_name, value: Number(c.total) }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {byCategory.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                      formatter={(v: number) => fmt(v)}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </section>
-
-          {/* Subscription vs installment vs one-time pie */}
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5 lg:col-span-2">
-            <h2 className="text-base font-medium text-on-surface mb-4">
-              Assinaturas vs Parcelas Fixas vs Avulsos ({year})
-            </h2>
-            {byType && (Number(byType.subscription_total) + Number(byType.installment_total) + Number(byType.one_time_total)) > 0 ? (
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'Assinaturas', value: Number(byType.subscription_total) },
-                        { name: 'Parcelas Fixas', value: Number(byType.installment_total) },
-                        { name: 'Avulsos', value: Number(byType.one_time_total) },
-                      ].filter((d) => d.value > 0)}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="value"
-                      label={(e: { name: string; percent: number }) => `${e.name} ${(e.percent * 100).toFixed(0)}%`}
-                    >
-                      <Cell fill="#34d399" />
-                      <Cell fill="#a78bfa" />
-                      <Cell fill="#3b82f6" />
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                      formatter={(v: number) => fmt(v)}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <p className="text-sm text-on-surface-variant text-center py-12">Sem dados.</p>
-            )}
-          </section>
+        <div
+          className="grid items-center gap-3 px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant"
+          style={{ gridTemplateColumns: '32px 1fr 110px 160px' }}
+        >
+          <div />
+          <div>Lançamento</div>
+          <div className="text-right">Data</div>
+          <div className="text-right pr-7">Valor</div>
         </div>
-      )}
 
-      {/* Monthly mode charts */}
-      {mode === 'monthly' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <h2 className="text-base font-medium text-on-surface mb-4">
-              Por Categoria ({PT_MONTHS[selectedMonth - 1]})
-            </h2>
-            <div className="h-64">
-              {byCategory.length === 0 ? (
-                <p className="text-sm text-on-surface-variant text-center pt-20">Sem dados.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={byCategory.map((c) => ({ name: c.category_name, value: Number(c.total) }))}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {byCategory.map((_, i) => (
-                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                      formatter={(v: number) => fmt(v)}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </section>
-
-          <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-            <h2 className="text-base font-medium text-on-surface mb-4">
-              Composição da Fatura ({PT_MONTHS[selectedMonth - 1]})
-            </h2>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    {
-                      label: PT_MONTHS_SHORT[selectedMonth - 1],
-                      Parcelados: Number(selectedSummary?.installment_total || 0),
-                      Avulsos: Number(selectedSummary?.one_time_total || 0),
-                      Assinaturas: Number(selectedSummary?.subscription_total || 0),
-                    },
-                  ]}
+        <div>
+          {filteredBill.length === 0 && (
+            <p className="text-sm text-on-surface-variant text-center py-8">
+              Nenhum lançamento nesta fatura.
+            </p>
+          )}
+          {filteredBill.map((item) => {
+            const isSub = item.is_subscription
+            const isInstallment = !isSub && item.installment_count > 1
+            const tipoLabel = isSub ? 'Assinatura' : isInstallment ? 'Parcelado' : 'Avulso'
+            return (
+              <div
+                key={item.installment_id}
+                onClick={() => setTxDetailOpen(item)}
+                className="grid items-center gap-3 px-3 py-3 border-b border-outline-variant last:border-b-0 cursor-pointer hover:bg-surface-container-low transition-colors"
+                style={{ gridTemplateColumns: '32px 1fr 110px auto' }}
+              >
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: `${item.card_color}26` }}
                 >
-                  <CartesianGrid stroke="#27272a" vertical={false} />
-                  <XAxis dataKey="label" stroke="#a1a1aa" tick={{ fontSize: 12 }} />
-                  <YAxis stroke="#a1a1aa" tick={{ fontSize: 12 }} tickFormatter={fmtShort} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', borderRadius: 8 }}
-                    formatter={(v: number) => fmt(v)}
-                    labelStyle={{ color: '#fafafa' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa' }} />
-                  <Bar dataKey="Avulsos" stackId="a" fill="#3b82f6" />
-                  <Bar dataKey="Parcelados" stackId="a" fill="#a78bfa" />
-                  <Bar dataKey="Assinaturas" stackId="a" fill="#34d399" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ color: item.card_color }}
+                  >
+                    {item.category_icon || (isSub ? 'autorenew' : isInstallment ? 'splitscreen' : 'receipt_long')}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-medium truncate ${item.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
+                      {item.description}
+                    </span>
+                    {isInstallment && (
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary whitespace-nowrap">
+                        {item.installment_number}/{item.installment_count}
+                      </span>
+                    )}
+                    {isSub && (
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-tertiary/20 text-tertiary">
+                        assinatura
+                      </span>
+                    )}
+                    {item.is_anticipated && (
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+                        antecipada
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-on-surface-variant mt-0.5 truncate">
+                    {item.card_name} · {item.category_name || 'Sem categoria'} · {tipoLabel}
+                  </div>
+                </div>
+                <div className="text-[11px] uppercase tracking-wider text-on-surface-variant text-right tabular-nums">
+                  {fmtDateBR(item.purchase_date)}
+                </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <span className={`text-sm font-medium tabular-nums whitespace-nowrap ${item.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
+                    −{fmt(Number(item.amount))}
+                    {isSub ? '/mês' : ''}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const msg = isSub
+                        ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
+                        : 'Remover este lançamento?'
+                      if (confirm(msg))
+                        deleteCreditCardExpense(item.expense_id).then(invalidateAll)
+                    }}
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-surface-container-high"
+                    title="Remover"
+                  >
+                    <span className="material-symbols-outlined text-sm">delete</span>
+                  </button>
+                </div>
+              </div>
+            )
+          })}
         </div>
-      )}
+      </section>
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
+        <section className="lg:col-span-4 bg-surface-container border border-outline-variant rounded-xl p-5">
+          <StackedBarsChart data={monthSummaries} />
+        </section>
+        <section className="lg:col-span-3 bg-surface-container border border-outline-variant rounded-xl p-5">
+          <TreemapChart
+            data={byCategory}
+            label={`${PT_MONTHS_SHORT[selectedMonth - 1]} ${year}`}
+          />
+        </section>
+      </div>
 
       {/* Modals */}
       {cardFormOpen && (
@@ -806,54 +479,574 @@ export default function CreditCardsPage() {
           onDone={() => { setPdfImportOpen(false); invalidateAll() }}
         />
       )}
-      {allExpensesOpen && (
-        <AllExpensesModal
-          items={[...monthBill].sort(
-            (a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime(),
-          )}
-          monthLabel={`${PT_MONTHS[selectedMonth - 1]} ${year}`}
-          onClose={() => setAllExpensesOpen(false)}
+      {addTxOpen && (
+        <AddTxModal
+          cards={cards}
+          categories={expenseCategories}
+          onClose={() => setAddTxOpen(false)}
+          onCreated={() => { setAddTxOpen(false); invalidateAll() }}
+        />
+      )}
+      {monthDetailOpen && (
+        <MonthDetailModal
+          summary={monthDetailOpen}
+          year={year}
+          onClose={() => setMonthDetailOpen(null)}
+          onTxClick={(t) => { setMonthDetailOpen(null); setTxDetailOpen(t) }}
+          onEditBill={() => {
+            setBillOpen({ year, month: monthDetailOpen.bill_month })
+            setMonthDetailOpen(null)
+          }}
+        />
+      )}
+      {txDetailOpen && (
+        <LancamentoDetailModal
+          item={txDetailOpen}
+          onClose={() => setTxDetailOpen(null)}
+          onEdit={() => { setEditExpenseOpen(txDetailOpen); setTxDetailOpen(null) }}
+          onDelete={() => {
+            const isSub = txDetailOpen.is_subscription
+            const msg = isSub
+              ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
+              : 'Remover este lançamento?'
+            if (confirm(msg))
+              deleteCreditCardExpense(txDetailOpen.expense_id).then(() => {
+                setTxDetailOpen(null)
+                invalidateAll()
+              })
+          }}
+        />
+      )}
+      {editExpenseOpen && (
+        <EditExpenseModal
+          installmentId={editExpenseOpen.installment_id}
+          expenseId={editExpenseOpen.expense_id}
+          onClose={() => setEditExpenseOpen(null)}
+          onSaved={() => { setEditExpenseOpen(null); invalidateAll() }}
         />
       )}
     </div>
   )
 }
 
-/* ─── Expense Form ─────────────────────────────────────────────────────── */
+/* ─── MonthStrip — cards de meses com linha SVG sobreposta ─────────────── */
 
-function ExpenseForm({
+function MonthStrip({
+  data,
+  activeIdx,
+  onSelect,
+}: {
+  data: CreditCardMonthSummary[]
+  activeIdx: number
+  onSelect: (i: number) => void
+}) {
+  if (data.length === 0) {
+    return <p className="text-sm text-on-surface-variant text-center py-8">Sem dados.</p>
+  }
+  const cardW = 140
+  const cardH = 130
+  const gap = 12
+  const totalW = data.length * (cardW + gap) - gap
+
+  const max = Math.max(...data.map((d) => Number(d.total)), 1)
+  const lineYTop = 18
+  const lineYBottom = 70
+  const yAt = (v: number) => lineYTop + (1 - v / max) * (lineYBottom - lineYTop)
+  const xAt = (i: number) => i * (cardW + gap) + cardW / 2
+
+  const points = data.map((d, i) => ({ x: xAt(i), y: yAt(Number(d.total)) }))
+  const linePath = points.reduce((acc, p, i) => {
+    if (i === 0) return `M ${p.x} ${p.y}`
+    const prev = points[i - 1]
+    const cx1 = prev.x + (p.x - prev.x) / 2
+    const cy1 = prev.y
+    const cx2 = prev.x + (p.x - prev.x) / 2
+    const cy2 = p.y
+    return acc + ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p.x} ${p.y}`
+  }, '')
+  const lastP = points[points.length - 1]
+  const firstP = points[0]
+  const areaPath = `${linePath} L ${lastP.x} ${cardH - 8} L ${firstP.x} ${cardH - 8} Z`
+
+  return (
+    <div className="relative overflow-x-auto cc-carousel">
+      <div className="relative" style={{ width: totalW, height: cardH }}>
+        <svg
+          width={totalW}
+          height={cardH}
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ zIndex: 2 }}
+        >
+          <defs>
+            <linearGradient id="ms-area" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={ACCENT} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={ACCENT} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill="url(#ms-area)" />
+          <path
+            d={linePath}
+            stroke={ACCENT}
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {points.map((p, i) => (
+            <g key={i}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={i === activeIdx ? 6 : 4}
+                fill={i === activeIdx ? ACCENT : '#0c0c0f'}
+                stroke={ACCENT}
+                strokeWidth="2"
+              />
+              {i === activeIdx && (
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r="6"
+                  fill="none"
+                  stroke={ACCENT}
+                  strokeOpacity="0.3"
+                  strokeWidth="6"
+                />
+              )}
+            </g>
+          ))}
+        </svg>
+
+        <div className="flex relative" style={{ gap, zIndex: 1 }}>
+          {data.map((d, i) => {
+            const isActive = i === activeIdx
+            return (
+              <button
+                key={i}
+                onClick={() => onSelect(i)}
+                className={`flex-shrink-0 rounded-xl px-3.5 py-3 flex flex-col justify-between text-left transition-all ${
+                  isActive
+                    ? 'border border-primary bg-primary/10'
+                    : 'border border-outline-variant bg-surface-container-low hover:border-primary/40'
+                }`}
+                style={{
+                  width: cardW,
+                  height: cardH,
+                  boxShadow: isActive ? `0 6px 20px ${ACCENT}40` : 'none',
+                }}
+              >
+                <div
+                  className={`text-xs font-semibold tracking-wide ${isActive ? 'text-primary' : 'text-on-surface-variant'}`}
+                >
+                  {PT_MONTHS_SHORT[d.bill_month - 1]}
+                </div>
+                <div style={{ height: 30 }} />
+                <div>
+                  <div
+                    className={`text-[15px] font-semibold tabular-nums tracking-tight ${
+                      isActive ? 'text-on-surface' : 'text-on-surface'
+                    }`}
+                  >
+                    {fmt(Number(d.total))}
+                  </div>
+                  <div className="text-[10px] text-on-surface-variant uppercase tracking-wider mt-1 tabular-nums">
+                    {d.item_count} {d.item_count === 1 ? 'item' : 'itens'}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── SpendHeatmap — gastos por dia do mês ─────────────────────────────── */
+
+function SpendHeatmap({
+  days,
+  year,
+  month,
+}: {
+  days: CreditCardDailySpend[]
+  year: number
+  month: number
+}) {
+  const max = Math.max(...days.map((d) => Number(d.total)), 1)
+  const cols = 10
+  const rows = Math.max(1, Math.ceil(days.length / cols))
+  const cell = 28
+  const gap = 4
+  const W = cols * cell + (cols - 1) * gap
+  const H = rows * cell + (rows - 1) * gap
+
+  const colorAt = (v: number) => {
+    if (v <= 0) return '#1e1e22'
+    const t = v / max
+    return `color-mix(in oklch, ${ACCENT} ${Math.round(20 + t * 80)}%, #18181b)`
+  }
+
+  const [hover, setHover] = useState<CreditCardDailySpend | null>(null)
+  const totalMonth = days.reduce((acc, d) => acc + Number(d.total), 0)
+
+  return (
+    <div>
+      <div className="flex justify-between items-start mb-4 gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-on-surface">
+            Gastos por dia · {PT_MONTHS_SHORT[month - 1]} {year}
+          </h3>
+          <div className="text-[10px] text-on-surface-variant uppercase tracking-wider mt-1">
+            Quanto mais escuro, mais gasto
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant whitespace-nowrap">
+          <span>Menos</span>
+          {[0.1, 0.3, 0.5, 0.7, 1].map((t) => (
+            <span
+              key={t}
+              className="w-2.5 h-2.5 rounded-sm"
+              style={{ background: `color-mix(in oklch, ${ACCENT} ${Math.round(20 + t * 80)}%, #18181b)` }}
+            />
+          ))}
+          <span>Mais</span>
+        </div>
+      </div>
+
+      <div className="relative mx-auto" style={{ width: W }}>
+        {days.length === 0 ? (
+          <p className="text-sm text-on-surface-variant text-center py-8">Sem dados para este mês.</p>
+        ) : (
+          <svg width={W} height={H} className="block">
+            {days.map((d, i) => {
+              const c = i % cols
+              const r = Math.floor(i / cols)
+              const x = c * (cell + gap)
+              const y = r * (cell + gap)
+              const v = Number(d.total)
+              return (
+                <g
+                  key={i}
+                  onMouseEnter={() => setHover(d)}
+                  onMouseLeave={() => setHover(null)}
+                >
+                  <rect
+                    x={x}
+                    y={y}
+                    width={cell}
+                    height={cell}
+                    rx="4"
+                    fill={colorAt(v)}
+                    stroke={hover === d ? ACCENT : 'transparent'}
+                    strokeWidth="1.5"
+                    style={{ cursor: 'pointer', transition: 'stroke 120ms' }}
+                  />
+                  <text
+                    x={x + cell / 2}
+                    y={y + cell / 2 + 3}
+                    textAnchor="middle"
+                    fontSize="9.5"
+                    fill={v > max * 0.6 ? 'white' : '#a1a1aa'}
+                    style={{ pointerEvents: 'none', fontFamily: 'ui-monospace, monospace' }}
+                  >
+                    {d.day}
+                  </text>
+                </g>
+              )
+            })}
+          </svg>
+        )}
+        {hover && (
+          <div
+            className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full bg-surface-container-high border border-outline-variant rounded-lg px-3 py-1.5 text-xs whitespace-nowrap pointer-events-none"
+            style={{ boxShadow: '0 6px 18px rgba(0,0,0,0.4)' }}
+          >
+            <span className="text-on-surface-variant">Dia {hover.day}</span>
+            <span className="ml-2 font-semibold tabular-nums">{fmt(Number(hover.total))}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-outline-variant flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-wider text-on-surface-variant">Total no mês</div>
+        <div className="text-sm font-semibold tabular-nums text-on-surface">{fmt(totalMonth)}</div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── StackedBarsChart — composição mensal (12 meses) ──────────────────── */
+
+function StackedBarsChart({ data }: { data: CreditCardMonthSummary[] }) {
+  const series = data.map((d) => ({
+    mes: PT_MONTHS_SHORT[d.bill_month - 1],
+    assinaturas: Number(d.subscription_total),
+    parcelados: Number(d.installment_total),
+    avulsos: Number(d.one_time_total),
+  }))
+  const max = Math.max(
+    ...series.map((d) => d.assinaturas + d.parcelados + d.avulsos),
+    1,
+  )
+  const W = 700
+  const H = 220
+  const padL = 36
+  const padR = 8
+  const padT = 10
+  const padB = 22
+  const iW = W - padL - padR
+  const iH = H - padT - padB
+  const groupW = iW / Math.max(series.length, 1)
+  const barW = Math.min(28, groupW * 0.6)
+  const colors = { assinaturas: SUCCESS, parcelados: ACCENT, avulsos: INFO }
+  const [hover, setHover] = useState<{ d: typeof series[number]; total: number; x: number } | null>(null)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-on-surface">Composição mensal</h3>
+          <div className="text-[10px] text-on-surface-variant uppercase tracking-wider mt-1">
+            Assinaturas + Parcelados + Avulsos
+          </div>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-on-surface-variant">
+          <Legend dot={colors.assinaturas} label="Assinaturas" />
+          <Legend dot={colors.parcelados} label="Parcelados" />
+          <Legend dot={colors.avulsos} label="Avulsos" />
+        </div>
+      </div>
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full block">
+          {[0, 0.5, 1].map((p, i) => (
+            <g key={i}>
+              <line
+                x1={padL}
+                x2={W - padR}
+                y1={padT + iH * (1 - p)}
+                y2={padT + iH * (1 - p)}
+                stroke="#27272a"
+                strokeDasharray="2 4"
+              />
+              <text
+                x={padL - 6}
+                y={padT + iH * (1 - p) + 3}
+                fontSize="9"
+                fill="#52525b"
+                textAnchor="end"
+                style={{ fontFamily: 'ui-monospace, monospace' }}
+              >
+                {fmtShort(max * p)}
+              </text>
+            </g>
+          ))}
+          {series.map((d, i) => {
+            const total = d.assinaturas + d.parcelados + d.avulsos
+            const x = padL + groupW * i + (groupW - barW) / 2
+            const segs = [
+              { k: 'assinaturas', v: d.assinaturas, c: colors.assinaturas },
+              { k: 'parcelados', v: d.parcelados, c: colors.parcelados },
+              { k: 'avulsos', v: d.avulsos, c: colors.avulsos },
+            ]
+            let acc = 0
+            return (
+              <g
+                key={i}
+                onMouseEnter={() => setHover({ d, total, x: x + barW / 2 })}
+                onMouseLeave={() => setHover(null)}
+              >
+                {segs.map((s, j) => {
+                  const h = (s.v / max) * iH
+                  const y = padT + iH - acc - h
+                  acc += h
+                  return (
+                    <rect
+                      key={j}
+                      x={x}
+                      y={y}
+                      width={barW}
+                      height={Math.max(0, h)}
+                      fill={s.c}
+                      style={{
+                        opacity: hover && hover.d !== d ? 0.4 : 1,
+                        transition: 'opacity 140ms',
+                      }}
+                    />
+                  )
+                })}
+                <text
+                  x={x + barW / 2}
+                  y={H - 6}
+                  fontSize="9.5"
+                  textAnchor="middle"
+                  fill="#a1a1aa"
+                  style={{ fontFamily: 'ui-monospace, monospace' }}
+                >
+                  {d.mes}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+        {hover && (
+          <div
+            className="absolute bg-surface-container-high border border-outline-variant rounded-lg p-2.5 text-[11px] pointer-events-none whitespace-nowrap"
+            style={{
+              left: `${(hover.x / W) * 100}%`,
+              top: 0,
+              transform: 'translate(-50%, -100%)',
+              boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+            }}
+          >
+            <div className="font-semibold mb-1 text-on-surface">
+              {hover.d.mes} · {fmt(hover.total)}
+            </div>
+            <div className="grid gap-x-3 text-[10px]" style={{ gridTemplateColumns: 'auto auto' }}>
+              <span style={{ color: colors.assinaturas }}>Assinaturas</span>
+              <span className="tabular-nums text-right">{fmt(hover.d.assinaturas)}</span>
+              <span style={{ color: colors.parcelados }}>Parcelados</span>
+              <span className="tabular-nums text-right">{fmt(hover.d.parcelados)}</span>
+              <span style={{ color: colors.avulsos }}>Avulsos</span>
+              <span className="tabular-nums text-right">{fmt(hover.d.avulsos)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Legend({ dot, label }: { dot: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="w-2 h-2 rounded-full" style={{ background: dot }} />
+      {label}
+    </span>
+  )
+}
+
+/* ─── TreemapChart — gastos por categoria ──────────────────────────────── */
+
+function TreemapChart({
+  data,
+  label,
+}: {
+  data: { category_name: string; category_icon: string | null; total: number }[]
+  label: string
+}) {
+  const sorted = [...data].sort((a, b) => Number(b.total) - Number(a.total))
+  const total = sorted.reduce((acc, c) => acc + Number(c.total), 0)
+  const W = 700
+  const H = 220
+
+  let x = 0
+  const rects = sorted.map((c, i) => {
+    const w = total > 0 ? (Number(c.total) / total) * W : 0
+    const r = {
+      ...c,
+      x,
+      y: 0,
+      w,
+      h: H,
+      cor: TREEMAP_COLORS[i % TREEMAP_COLORS.length],
+      total: Number(c.total),
+    }
+    x += w
+    return r
+  })
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-on-surface">Categorias · {label}</h3>
+          <div className="text-[10px] text-on-surface-variant uppercase tracking-wider mt-1">
+            Tamanho proporcional ao gasto
+          </div>
+        </div>
+        <span className="text-xs text-on-surface-variant tabular-nums">{fmt(total)}</span>
+      </div>
+      {sorted.length === 0 ? (
+        <p className="text-sm text-on-surface-variant text-center py-12">Sem dados.</p>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full block rounded-lg">
+          {rects.map((r, i) => {
+            const pct = total > 0 ? Math.round((r.total / total) * 100) : 0
+            return (
+              <g key={i}>
+                <rect
+                  x={r.x + 2}
+                  y={r.y + 2}
+                  width={Math.max(0, r.w - 4)}
+                  height={r.h - 4}
+                  rx="6"
+                  fill={r.cor}
+                  fillOpacity="0.18"
+                  stroke={r.cor}
+                  strokeOpacity="0.4"
+                  strokeWidth="1"
+                />
+                {r.w > 70 && (
+                  <>
+                    <text x={r.x + 12} y={r.y + 24} fontSize="11" fontWeight="600" fill="#fafafa">
+                      {r.category_name}
+                    </text>
+                    <text
+                      x={r.x + 12}
+                      y={r.y + 42}
+                      fontSize="11"
+                      fill={r.cor}
+                      style={{ fontFamily: 'ui-monospace, monospace' }}
+                    >
+                      {fmt(r.total)}
+                    </text>
+                    <text
+                      x={r.x + 12}
+                      y={r.y + 58}
+                      fontSize="9"
+                      fill="#a1a1aa"
+                      style={{ fontFamily: 'ui-monospace, monospace' }}
+                    >
+                      {pct}%
+                    </text>
+                  </>
+                )}
+              </g>
+            )
+          })}
+        </svg>
+      )}
+    </div>
+  )
+}
+
+/* ─── AddTxModal — Lançar Gasto (substitui o form lateral) ─────────────── */
+
+function AddTxModal({
   cards,
   categories,
+  onClose,
   onCreated,
 }: {
   cards: CreditCard[]
   categories: { id: number; name: string; icon: string | null }[]
+  onClose: () => void
   onCreated: () => void
 }) {
-  const [cardId, setCardId] = useState<number | ''>('')
+  const [cardId, setCardId] = useState<number | ''>(cards[0]?.id ?? '')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(todayIso())
-  const [categoryId, setCategoryId] = useState<number | ''>('')
+  const [categoryId, setCategoryId] = useState<number | ''>(categories[0]?.id ?? '')
   const [parcelado, setParcelado] = useState(false)
-  const [installments, setInstallments] = useState(1)
+  const [installments, setInstallments] = useState(2)
   const [isSubscription, setIsSubscription] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!cardId && cards.length) setCardId(cards[0].id)
-  }, [cards, cardId])
-  useEffect(() => {
-    if (!categoryId && categories.length) setCategoryId(categories[0].id)
-  }, [categories, categoryId])
-
   const submit = useMutation({
     mutationFn: createCreditCardExpense,
-    onSuccess: () => {
-      setDescription(''); setAmount(''); setInstallments(1); setParcelado(false); setIsSubscription(false)
-      setError(null)
-      onCreated()
-    },
+    onSuccess: onCreated,
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setError(e?.response?.data?.detail || 'Erro ao lançar gasto')
     },
@@ -871,131 +1064,337 @@ function ExpenseForm({
       description: description.trim(),
       amount: amt,
       purchase_date: date,
-      installment_count: parcelado ? Math.max(1, installments) : 1,
+      installment_count: parcelado ? Math.max(2, installments) : 1,
       is_subscription: isSubscription,
     })
   }
 
-  const noCards = cards.length === 0
-
   return (
-    <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-      <header className="flex items-center gap-2 mb-4">
-        <span className="w-1 h-5 bg-primary rounded" />
-        <h2 className="text-base font-medium text-on-surface">Lançar Gasto</h2>
-      </header>
+    <Modal onClose={onClose} title="Lançar Gasto">
+      <div className="space-y-4">
+        <Field label="Cartão">
+          <select
+            value={cardId}
+            onChange={(e) => setCardId(Number(e.target.value))}
+            className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {cards.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </Field>
 
-      {noCards && (
-        <p className="text-sm text-on-surface-variant text-center py-4">
-          Cadastre um cartão antes de lançar gastos.
-        </p>
-      )}
+        <Field label="Descrição">
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Ex: Supermercado BH"
+            className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </Field>
 
-      {!noCards && (
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs uppercase tracking-wide text-on-surface-variant">Cartão</label>
-            <select
-              value={cardId}
-              onChange={(e) => setCardId(Number(e.target.value))}
-              className="mt-1.5 w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              {cards.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wide text-on-surface-variant">Descrição</label>
-            <input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: Supermercado BH"
-              className="mt-1.5 w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wide text-on-surface-variant">Valor (R$)</label>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Valor (R$)">
             <input
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="R$ 0,00"
               inputMode="decimal"
-              className="mt-1.5 w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:ring-2 focus:ring-primary"
             />
-          </div>
+          </Field>
+          <Field label="Data">
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </Field>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs uppercase tracking-wide text-on-surface-variant">Categoria</label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(Number(e.target.value))}
-                className="mt-1.5 w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs uppercase tracking-wide text-on-surface-variant">Data</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="mt-1.5 w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          </div>
+        <Field label="Categoria">
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(Number(e.target.value))}
+            className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </Field>
 
-          <ToggleRow
-            icon="event_repeat"
-            label="Parcelado?"
-            value={parcelado}
-            onChange={(v) => { setParcelado(v); if (v) setIsSubscription(false) }}
-            disabled={isSubscription}
-          />
-          {parcelado && (
-            <div>
-              <label className="text-xs uppercase tracking-wide text-on-surface-variant">
-                Número de Parcelas
-              </label>
-              <input
-                type="number"
-                min={2}
-                value={installments}
-                onChange={(e) => setInstallments(Number(e.target.value) || 1)}
-                className="mt-1.5 w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-          )}
+        <ToggleRow
+          icon="event_repeat"
+          label="Parcelado?"
+          value={parcelado}
+          onChange={(v) => { setParcelado(v); if (v) setIsSubscription(false) }}
+          disabled={isSubscription}
+        />
+        {parcelado && (
+          <Field label="Número de Parcelas">
+            <input
+              type="number"
+              min={2}
+              value={installments}
+              onChange={(e) => setInstallments(Number(e.target.value) || 2)}
+              className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </Field>
+        )}
 
-          <ToggleRow
-            icon="subscriptions"
-            label="Assinatura?"
-            value={isSubscription}
-            onChange={(v) => { setIsSubscription(v); if (v) { setParcelado(false); setInstallments(1) } }}
-            disabled={parcelado}
-          />
+        <ToggleRow
+          icon="autorenew"
+          label="Assinatura?"
+          value={isSubscription}
+          onChange={(v) => { setIsSubscription(v); if (v) { setParcelado(false); setInstallments(2) } }}
+          disabled={parcelado}
+        />
 
-          {error && <p className="text-sm text-error">{error}</p>}
+        {error && <p className="text-sm text-error">{error}</p>}
 
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+          >
+            Cancelar
+          </button>
           <button
             onClick={handleSubmit}
             disabled={submit.isPending}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
+            className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
           >
-            <span className="material-symbols-outlined text-base">send</span>
+            <span className="material-symbols-outlined text-base">add</span>
             {submit.isPending ? 'Adicionando...' : 'Adicionar Gasto'}
           </button>
         </div>
-      )}
-    </section>
+      </div>
+    </Modal>
   )
 }
+
+/* ─── MonthDetailModal — gastos do mês ─────────────────────────────────── */
+
+function MonthDetailModal({
+  summary,
+  year,
+  onClose,
+  onTxClick,
+  onEditBill,
+}: {
+  summary: CreditCardMonthSummary
+  year: number
+  onClose: () => void
+  onTxClick: (item: CreditCardBillItem) => void
+  onEditBill: () => void
+}) {
+  const { data: items = [] } = useQuery({
+    queryKey: ['cc-bill', year, summary.bill_month],
+    queryFn: () => getCreditCardBill(year, summary.bill_month),
+  })
+  const sorted = useMemo(
+    () => [...items].sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime()),
+    [items],
+  )
+  const total = items.filter((i) => !i.is_refunded).reduce((acc, i) => acc + Number(i.amount), 0)
+
+  return (
+    <Modal
+      onClose={onClose}
+      width="lg"
+      title={`Gastos de ${PT_MONTHS[summary.bill_month - 1]} ${year}`}
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <span className="material-symbols-outlined text-primary text-base">calendar_today</span>
+        <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">
+          {PT_MONTHS[summary.bill_month - 1]} {year}
+        </span>
+      </div>
+      <div className="text-xs text-on-surface-variant mb-3">
+        {items.length} {items.length === 1 ? 'lançamento' : 'lançamentos'} · total{' '}
+        <span className="font-semibold text-on-surface tabular-nums">{fmt(total)}</span>
+      </div>
+
+      <div
+        className="grid gap-3 px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant"
+        style={{ gridTemplateColumns: '1fr 110px 110px' }}
+      >
+        <div>Lançamento</div>
+        <div className="text-right">Data</div>
+        <div className="text-right">Valor</div>
+      </div>
+
+      <div className="max-h-[420px] overflow-y-auto mb-4">
+        {sorted.length === 0 && (
+          <p className="text-sm text-on-surface-variant text-center py-8">
+            Sem lançamentos neste mês.
+          </p>
+        )}
+        {sorted.map((tx) => (
+          <div
+            key={tx.installment_id}
+            onClick={() => onTxClick(tx)}
+            className="grid gap-3 items-center px-3 py-2.5 rounded-md cursor-pointer border-b border-outline-variant last:border-b-0 hover:bg-surface-container-low transition-colors"
+            style={{ gridTemplateColumns: '1fr 110px 110px' }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: `${tx.card_color}26` }}
+              >
+                <span
+                  className="material-symbols-outlined text-xs"
+                  style={{ color: tx.card_color }}
+                >
+                  {tx.category_icon || 'receipt_long'}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <div className={`text-sm font-medium truncate ${tx.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
+                  {tx.description}
+                </div>
+                <div className="text-xs text-on-surface-variant truncate">
+                  {tx.category_name || 'Sem categoria'} · {tx.card_name}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] uppercase tracking-wider text-on-surface-variant text-right tabular-nums">
+              {fmtDateBR(tx.purchase_date)}
+            </div>
+            <div className={`text-sm font-medium text-right tabular-nums ${tx.is_refunded ? 'line-through text-on-surface-variant' : 'text-error'}`}>
+              −{fmt(Number(tx.amount))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between p-4 rounded-lg bg-surface-container-low border border-outline-variant mb-4">
+        <span className="text-[10px] uppercase tracking-wider text-on-surface-variant">Total do mês</span>
+        <span className="text-lg font-semibold text-error tabular-nums">−{fmt(total)}</span>
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+        >
+          Fechar
+        </button>
+        <button
+          onClick={onEditBill}
+          className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-base">edit</span>
+          Editar fatura
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+/* ─── LancamentoDetailModal — detalhe de um lançamento ─────────────────── */
+
+function LancamentoDetailModal({
+  item,
+  onClose,
+  onEdit,
+  onDelete,
+}: {
+  item: CreditCardBillItem
+  onClose: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const isSub = item.is_subscription
+  const isInstallment = !isSub && item.installment_count > 1
+  const tipo = isSub ? 'Assinatura' : isInstallment ? 'Parcelado' : 'Avulso'
+  const icon = item.category_icon || (isSub ? 'autorenew' : isInstallment ? 'splitscreen' : 'receipt_long')
+
+  return (
+    <Modal onClose={onClose} title={item.description}>
+      <div className="-mt-2 mb-4 flex items-center gap-3">
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center"
+          style={{ backgroundColor: `${ACCENT}24`, color: ACCENT }}
+        >
+          <span className="material-symbols-outlined">{icon}</span>
+        </div>
+        <div className="text-xs text-on-surface-variant min-w-0">
+          {item.card_name} · {item.category_name || 'Sem categoria'} · {tipo}
+        </div>
+      </div>
+
+      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant mb-4">
+        <div className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5">
+          Valor
+        </div>
+        <div className="text-3xl font-semibold tabular-nums tracking-tight text-primary">
+          −{fmt(Number(item.amount))}{isSub ? '/mês' : ''}
+        </div>
+        {isInstallment && (
+          <div className="mt-2 text-xs text-on-surface-variant">
+            Parcela{' '}
+            <span className="text-info tabular-nums">
+              {item.installment_number}/{item.installment_count}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <DetailField label="Data da compra" value={fmtDateBR(item.purchase_date)} icon="calendar_today" />
+        <DetailField label="Cartão" value={item.card_name} icon="credit_card" />
+        <DetailField label="Categoria" value={item.category_name || 'Sem categoria'} icon="sell" />
+        <DetailField label="Tipo" value={tipo} icon="description" />
+      </div>
+
+      {item.is_anticipated && (
+        <div className="mb-4 p-3 rounded-lg bg-primary/10 border border-primary/30 text-xs text-primary">
+          Esta parcela foi <strong>antecipada</strong> manualmente.
+        </div>
+      )}
+
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={onDelete}
+          className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:text-error hover:border-error/50 flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-base">delete</span>
+          Excluir
+        </button>
+        <button
+          onClick={onEdit}
+          className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-base">edit</span>
+          Editar
+        </button>
+        <button
+          onClick={onClose}
+          className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90"
+        >
+          Fechar
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+function DetailField({ label, value, icon }: { label: string; value: string; icon: string }) {
+  return (
+    <div className="bg-surface-container-low border border-outline-variant rounded-lg p-3">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="material-symbols-outlined text-xs text-on-surface-variant">{icon}</span>
+        <div className="text-[10px] uppercase tracking-wider text-on-surface-variant">{label}</div>
+      </div>
+      <div className="text-sm font-medium text-on-surface">{value}</div>
+    </div>
+  )
+}
+
+/* ─── ToggleRow ────────────────────────────────────────────────────────── */
 
 function ToggleRow({
   icon, label, value, onChange, disabled,
@@ -1498,11 +1897,11 @@ function Modal({
   const widthCls = width === 'lg' ? 'max-w-2xl' : 'max-w-md'
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className={`${widthCls} w-full bg-surface-container border border-outline-variant rounded-xl p-6`}
+        className={`${widthCls} w-full bg-surface-container border border-outline-variant rounded-xl p-6 max-h-[90vh] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between mb-4">
@@ -1704,71 +2103,6 @@ function PdfImportModal({
               {confirm.isPending ? 'Importando...' : `Importar ${items.length} gasto${items.length !== 1 ? 's' : ''}`}
             </button>
           </div>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-/* ─── All expenses (monthly) modal ─────────────────────────────────────── */
-
-function AllExpensesModal({
-  items, monthLabel, onClose,
-}: {
-  items: CreditCardBillItem[]
-  monthLabel: string
-  onClose: () => void
-}) {
-  const total = items.filter((i) => !i.is_refunded).reduce((acc, i) => acc + Number(i.amount), 0)
-  return (
-    <Modal onClose={onClose} title={`Gastos de ${monthLabel}`} width="lg">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-container-low border border-outline-variant">
-          <p className="text-sm text-on-surface-variant">{items.length} lançamento{items.length !== 1 ? 's' : ''}</p>
-          <p className="text-lg font-semibold text-on-surface">{fmt(total)}</p>
-        </div>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {items.length === 0 && (
-            <p className="text-sm text-on-surface-variant text-center py-8">Sem lançamentos.</p>
-          )}
-          {items.map((item) => (
-            <div
-              key={item.installment_id}
-              className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant bg-surface-container-low"
-            >
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: item.card_color + '33' }}
-              >
-                <span className="material-symbols-outlined text-sm" style={{ color: item.card_color }}>
-                  {item.category_icon || 'receipt_long'}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className={`font-medium truncate text-sm ${item.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
-                    {item.description}
-                  </p>
-                  {item.is_subscription && (
-                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-tertiary/20 text-tertiary">
-                      assinatura
-                    </span>
-                  )}
-                  {item.installment_count > 1 && (
-                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary">
-                      {item.installment_number}/{item.installment_count}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-on-surface-variant">
-                  {new Date(item.purchase_date + 'T00:00:00').toLocaleDateString('pt-BR')} · {item.card_name} · {item.category_name || 'Sem categoria'}
-                </p>
-              </div>
-              <p className={`font-medium whitespace-nowrap text-sm ${item.is_refunded ? 'line-through text-on-surface-variant' : 'text-on-surface'}`}>
-                {fmt(Number(item.amount))}
-              </p>
-            </div>
-          ))}
         </div>
       </div>
     </Modal>
