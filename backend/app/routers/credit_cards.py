@@ -57,10 +57,12 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
 def _bill_period_for_purchase(purchase_date: date, closing_day: int) -> tuple[int, int]:
     """Return (year, month) of the fatura that closes for this purchase.
 
-    Rule: a purchase on day <= closing_day falls into the fatura that closes
-    THIS month; otherwise it falls into next month's fatura.
+    Rule: a purchase on day < closing_day falls into the fatura that closes
+    THIS month; on the closing day itself or after, it falls into next
+    month's fatura. Example with closing_day=21: a purchase on day 20 goes
+    into the current-month bill; days 21..end-of-month go into the next.
     """
-    if purchase_date.day <= closing_day:
+    if purchase_date.day < closing_day:
         return purchase_date.year, purchase_date.month
     return _add_months(purchase_date.year, purchase_date.month, 1)
 
