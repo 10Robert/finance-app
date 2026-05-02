@@ -574,6 +574,53 @@ function MonthStrip({
   onSelect: (i: number) => void
   onOpen: (i: number) => void
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [canPrev, setCanPrev] = useState(false)
+  const [canNext, setCanNext] = useState(false)
+
+  const updateBounds = () => {
+    const el = scrollRef.current
+    if (!el) return
+    setCanPrev(el.scrollLeft > 2)
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    updateBounds()
+    el.addEventListener('scroll', updateBounds, { passive: true })
+    window.addEventListener('resize', updateBounds)
+    return () => {
+      el.removeEventListener('scroll', updateBounds)
+      window.removeEventListener('resize', updateBounds)
+    }
+  }, [data.length])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || activeIdx < 0) return
+    const cardEl = el.querySelector<HTMLElement>(`[data-month-card="${activeIdx}"]`)
+    if (!cardEl) return
+    const cardLeft = cardEl.offsetLeft
+    const cardRight = cardLeft + cardEl.offsetWidth
+    const viewLeft = el.scrollLeft
+    const viewRight = viewLeft + el.clientWidth
+    if (cardLeft < viewLeft || cardRight > viewRight) {
+      el.scrollTo({
+        left: cardLeft - (el.clientWidth - cardEl.offsetWidth) / 2,
+        behavior: 'smooth',
+      })
+    }
+  }, [activeIdx])
+
+  const scrollByCards = (dir: -1 | 1) => {
+    const el = scrollRef.current
+    if (!el) return
+    const step = (140 + 12) * 3
+    el.scrollBy({ left: dir * step, behavior: 'smooth' })
+  }
+
   if (data.length === 0) {
     return <p className="text-sm text-on-surface-variant text-center py-8">Sem dados.</p>
   }
@@ -603,7 +650,46 @@ function MonthStrip({
   const areaPath = `${linePath} L ${lastP.x} ${cardH - 8} L ${firstP.x} ${cardH - 8} Z`
 
   return (
-    <div className="relative overflow-x-auto cc-carousel">
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => scrollByCards(-1)}
+        disabled={!canPrev}
+        aria-label="Cards anteriores"
+        className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full border border-outline-variant bg-surface-container/95 backdrop-blur text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-all ${
+          canPrev ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+      >
+        <span className="material-symbols-outlined text-lg">chevron_left</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => scrollByCards(1)}
+        disabled={!canNext}
+        aria-label="Próximos cards"
+        className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full border border-outline-variant bg-surface-container/95 backdrop-blur text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-all ${
+          canNext ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+      >
+        <span className="material-symbols-outlined text-lg">chevron_right</span>
+      </button>
+      {canPrev && (
+        <div
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-12 z-10 pointer-events-none"
+          style={{ background: 'linear-gradient(to right, var(--color-surface-container, #18181b), transparent)' }}
+        />
+      )}
+      {canNext && (
+        <div
+          aria-hidden
+          className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none"
+          style={{ background: 'linear-gradient(to left, var(--color-surface-container, #18181b), transparent)' }}
+        />
+      )}
+      <div ref={scrollRef} className="relative overflow-x-auto cc-carousel">
       <div className="relative" style={{ width: totalW, height: cardH }}>
         <svg
           width={totalW}
@@ -657,6 +743,7 @@ function MonthStrip({
             return (
               <button
                 key={i}
+                data-month-card={i}
                 onClick={() => onSelect(i)}
                 onDoubleClick={() => onOpen(i)}
                 className={`flex-shrink-0 rounded-xl px-3.5 py-3 flex flex-col justify-between text-left transition-all ${
@@ -692,6 +779,7 @@ function MonthStrip({
             )
           })}
         </div>
+      </div>
       </div>
     </div>
   )
