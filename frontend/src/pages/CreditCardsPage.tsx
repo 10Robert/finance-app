@@ -242,8 +242,8 @@ export default function CreditCardsPage() {
       </section>
 
       {/* Cartões + Heatmap */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <section className="lg:col-span-3 bg-surface-container border border-outline-variant rounded-xl p-5">
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <section className="xl:col-span-3 bg-surface-container border border-outline-variant rounded-xl p-5">
           <header className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-on-surface">Meus Cartões</h2>
             <button
@@ -337,7 +337,7 @@ export default function CreditCardsPage() {
           )}
         </section>
 
-        <section className="lg:col-span-2 bg-surface-container border border-outline-variant rounded-xl p-5">
+        <section className="xl:col-span-2 bg-surface-container border border-outline-variant rounded-xl p-5">
           <SpendHeatmap days={dailySpend} year={year} month={selectedMonth} />
         </section>
       </div>
@@ -1298,11 +1298,90 @@ function MonthDetailModal({
     </button>
   )
 
+  /* ── Drag horizontal: click + segurar + arrastar para navegar meses ── */
+  const DRAG_THRESHOLD = 80
+  const DRAG_ACTIVATE = 8
+  const dragState = useRef<{ startX: number; startY: number; active: boolean; pointerId: number } | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const isInteractive = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false
+    return !!target.closest('button, a, input, select, textarea, [data-no-drag]')
+  }
+
+  const onPanelPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (isInteractive(e.target)) return
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      active: false,
+      pointerId: e.pointerId,
+    }
+  }
+
+  const onPanelPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const ds = dragState.current
+    if (!ds || ds.pointerId !== e.pointerId) return
+    const dx = e.clientX - ds.startX
+    const dy = e.clientY - ds.startY
+    if (!ds.active) {
+      if (Math.abs(dx) < DRAG_ACTIVATE && Math.abs(dy) < DRAG_ACTIVATE) return
+      if (Math.abs(dx) <= Math.abs(dy)) {
+        dragState.current = null
+        return
+      }
+      ds.active = true
+      setIsDragging(true)
+      try {
+        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
+      } catch { /* ignore */ }
+    }
+    const limited =
+      (dx > 0 && !canPrev) || (dx < 0 && !canNext) ? dx * 0.25 : dx
+    setDragOffset(limited)
+  }
+
+  const onPanelPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const ds = dragState.current
+    if (!ds || ds.pointerId !== e.pointerId) return
+    const dx = e.clientX - ds.startX
+    const wasActive = ds.active
+    dragState.current = null
+    setDragOffset(0)
+    setIsDragging(false)
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId)
+    } catch { /* ignore */ }
+    if (!wasActive) return
+    if (Math.abs(dx) >= DRAG_THRESHOLD) {
+      if (dx > 0 && canPrev) stepOnce(-1)
+      else if (dx < 0 && canNext) stepOnce(1)
+    }
+  }
+
+  const dragHint =
+    Math.abs(dragOffset) >= DRAG_THRESHOLD
+      ? dragOffset > 0
+        ? `← ${PT_MONTHS_SHORT[(summary.bill_month - 2 + 12) % 12]}`
+        : `${PT_MONTHS_SHORT[summary.bill_month % 12]} →`
+      : null
+
   return (
     <Modal
       onClose={onClose}
-      width="lg"
+      width="xl"
       title={`Gastos de ${PT_MONTHS[summary.bill_month - 1]} ${year}`}
+      panelClassName={`select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      panelStyle={{
+        transform: `translateX(${dragOffset}px)`,
+        transition: isDragging ? 'none' : 'transform 0.22s ease-out',
+        touchAction: 'pan-y',
+      }}
+      onPanelPointerDown={onPanelPointerDown}
+      onPanelPointerMove={onPanelPointerMove}
+      onPanelPointerUp={onPanelPointerUp}
     >
       <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
@@ -1311,7 +1390,7 @@ function MonthDetailModal({
             {PT_MONTHS[summary.bill_month - 1]} {year}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-no-drag>
           {navBtn(-1, !canPrev)}
           <span className="text-[10px] uppercase tracking-wider text-on-surface-variant tabular-nums">
             {idx + 1} / {summaries.length}
@@ -1319,9 +1398,21 @@ function MonthDetailModal({
           {navBtn(1, !canNext)}
         </div>
       </div>
-      <div className="text-xs text-on-surface-variant mb-3">
-        {items.length} {items.length === 1 ? 'lançamento' : 'lançamentos'} · total{' '}
-        <span className="font-semibold text-on-surface tabular-nums">{fmt(total)}</span>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="text-xs text-on-surface-variant">
+          {items.length} {items.length === 1 ? 'lançamento' : 'lançamentos'} · total{' '}
+          <span className="font-semibold text-on-surface tabular-nums">{fmt(total)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-on-surface-variant">
+          <span className="material-symbols-outlined text-sm">swipe</span>
+          <span className="hidden sm:inline">Arraste para navegar</span>
+          <span className="sm:hidden">Arraste</span>
+          {dragHint && (
+            <span className="text-primary font-semibold ml-1 normal-case tracking-normal">
+              {dragHint}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-3 px-2 sm:px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant grid-cols-[1fr_auto] sm:grid-cols-[1fr_110px_110px]">
@@ -1330,7 +1421,7 @@ function MonthDetailModal({
         <div className="text-right">Valor</div>
       </div>
 
-      <div className="max-h-[420px] overflow-y-auto mb-4">
+      <div className="max-h-[50vh] sm:max-h-[420px] overflow-y-auto mb-4">
         {sorted.length === 0 && (
           <p className="text-sm text-on-surface-variant text-center py-8">
             Sem lançamentos neste mês.
@@ -1339,6 +1430,7 @@ function MonthDetailModal({
         {sorted.map((tx) => (
           <div
             key={tx.installment_id}
+            data-no-drag
             onClick={() => onTxClick(tx)}
             className="grid gap-3 items-center px-2 sm:px-3 py-2.5 rounded-md cursor-pointer border-b border-outline-variant last:border-b-0 hover:bg-surface-container-low transition-colors grid-cols-[1fr_auto] sm:grid-cols-[1fr_110px_110px]"
           >
@@ -1378,7 +1470,7 @@ function MonthDetailModal({
         <span className="text-lg font-semibold text-error tabular-nums">−{fmt(total)}</span>
       </div>
 
-      <div className="flex gap-2 justify-end">
+      <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end" data-no-drag>
         <button
           onClick={onClose}
           className="px-4 py-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
@@ -1387,7 +1479,7 @@ function MonthDetailModal({
         </button>
         <button
           onClick={onEditBill}
-          className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 flex items-center gap-2"
+          className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 flex items-center justify-center gap-2"
         >
           <span className="material-symbols-outlined text-base">edit</span>
           Editar fatura
@@ -1993,19 +2085,36 @@ function EditExpenseModal({
 /* ─── shared primitives ────────────────────────────────────────────────── */
 
 function Modal({
-  title, onClose, children, width = 'md',
+  title, onClose, children, width = 'md', panelClassName = '', panelStyle, panelRef,
+  onPanelPointerDown, onPanelPointerMove, onPanelPointerUp,
 }: {
-  title: string; onClose: () => void; children: React.ReactNode; width?: 'md' | 'lg'
+  title: string
+  onClose: () => void
+  children: React.ReactNode
+  width?: 'md' | 'lg' | 'xl'
+  panelClassName?: string
+  panelStyle?: React.CSSProperties
+  panelRef?: React.Ref<HTMLDivElement>
+  onPanelPointerDown?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onPanelPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void
+  onPanelPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void
 }) {
-  const widthCls = width === 'lg' ? 'max-w-2xl' : 'max-w-md'
+  const widthCls =
+    width === 'xl' ? 'max-w-4xl' : width === 'lg' ? 'max-w-2xl' : 'max-w-md'
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        className={`${widthCls} w-full bg-surface-container border border-outline-variant rounded-xl p-6 max-h-[90vh] overflow-y-auto`}
+        ref={panelRef}
+        className={`${widthCls} w-full bg-surface-container border border-outline-variant rounded-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto ${panelClassName}`}
+        style={panelStyle}
         onClick={(e) => e.stopPropagation()}
+        onPointerDown={onPanelPointerDown}
+        onPointerMove={onPanelPointerMove}
+        onPointerUp={onPanelPointerUp}
+        onPointerCancel={onPanelPointerUp}
       >
         <header className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-on-surface">{title}</h2>
