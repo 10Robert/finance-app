@@ -27,15 +27,17 @@ Para cada transação, retorne um array JSON onde cada elemento tem:
 
 Retorne APENAS JSON válido, sem blocos de código markdown, sem explicação."""
 
-PDF_EXTRACT_PROMPT = """Você é um parser de extratos bancários.
+PDF_EXTRACT_PROMPT = """Você é um parser de extratos bancários e faturas de cartão.
 
-Abaixo está o texto extraído de um extrato bancário em PDF.
+Abaixo está o conteúdo de um extrato/fatura em **Markdown estruturado**
+(tabelas em formato markdown, cabeçalhos preservados). Use a estrutura das
+tabelas para identificar colunas (data, descrição, valor) com precisão.
 Extraia TODAS as transações e categorize cada uma.
 
 Categorias disponíveis (use exatamente esses nomes):
 {categories_json}
 
-Texto do extrato:
+Conteúdo do extrato (markdown):
 {pdf_text}
 
 Retorne um array JSON onde cada elemento tem:
