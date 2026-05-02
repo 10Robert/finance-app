@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getCreditCards,
@@ -137,6 +137,27 @@ export default function CreditCardsPage() {
   const [expenseFilter, setExpenseFilter] = useState<
     'all' | 'one_time' | 'installment' | 'subscription'
   >('all')
+  const [categoryFilter, setCategoryFilter] = useState<number | 'all'>('all')
+
+  const billCategories = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; icon: string | null }>()
+    monthBill.forEach((b) => {
+      if (b.category_id && !map.has(b.category_id)) {
+        map.set(b.category_id, {
+          id: b.category_id,
+          name: b.category_name || 'Sem categoria',
+          icon: b.category_icon,
+        })
+      }
+    })
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [monthBill])
+
+  useEffect(() => {
+    if (categoryFilter !== 'all' && !billCategories.some((c) => c.id === categoryFilter)) {
+      setCategoryFilter('all')
+    }
+  }, [billCategories, categoryFilter])
 
   const filteredBill = useMemo(() => {
     let list = monthBill
@@ -145,10 +166,12 @@ export default function CreditCardsPage() {
       list = list.filter((e) => !e.is_subscription && e.installment_count > 1)
     else if (expenseFilter === 'one_time')
       list = list.filter((e) => !e.is_subscription && e.installment_count === 1)
+    if (categoryFilter !== 'all')
+      list = list.filter((e) => e.category_id === categoryFilter)
     return [...list].sort(
       (a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime(),
     )
-  }, [monthBill, expenseFilter])
+  }, [monthBill, expenseFilter, categoryFilter])
 
   const noCards = cards.length === 0
   const activeIdx = selectedMonth - 1
@@ -205,12 +228,13 @@ export default function CreditCardsPage() {
       <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-on-surface">Resumo Mensal</h2>
-          <div className="text-xs text-on-surface-variant">Clique em um mês para ver os detalhes</div>
+          <div className="text-xs text-on-surface-variant">Clique para filtrar · Duplo clique para detalhes</div>
         </div>
         <MonthStrip
           data={monthSummaries}
           activeIdx={activeIdx}
-          onSelect={(i) => {
+          onSelect={(i) => setSelectedMonth(i + 1)}
+          onOpen={(i) => {
             setSelectedMonth(i + 1)
             setMonthDetailOpen(monthSummaries[i] || null)
           }}
@@ -319,44 +343,48 @@ export default function CreditCardsPage() {
       </div>
 
       {/* Lançamentos */}
-      <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
-        <header className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+      <section className="bg-surface-container border border-outline-variant rounded-xl p-4 sm:p-5">
+        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
           <div>
             <h2 className="text-sm font-semibold text-on-surface">Lançamentos</h2>
             <div className="text-xs text-on-surface-variant mt-0.5">
               Fatura de {PT_MONTHS[selectedMonth - 1]} {year}
             </div>
           </div>
-          <div className="flex border border-outline-variant rounded-lg overflow-hidden text-xs">
-            {([
-              ['all', 'Todos'],
-              ['one_time', 'Avulsos'],
-              ['installment', 'Parcelados'],
-              ['subscription', 'Assinaturas'],
-            ] as const).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setExpenseFilter(k)}
-                className={`px-3 py-1.5 transition-colors ${
-                  expenseFilter === k
-                    ? 'bg-primary text-on-primary'
-                    : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex border border-outline-variant rounded-lg overflow-hidden text-xs">
+              {([
+                ['all', 'Todos'],
+                ['one_time', 'Avulsos'],
+                ['installment', 'Parcelados'],
+                ['subscription', 'Assinaturas'],
+              ] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setExpenseFilter(k)}
+                  className={`px-3 py-1.5 transition-colors ${
+                    expenseFilter === k
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <CategoryFilterButton
+              categories={billCategories}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+            />
           </div>
         </header>
 
-        <div
-          className="grid items-center gap-3 px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant"
-          style={{ gridTemplateColumns: '32px 1fr 110px 160px' }}
-        >
+        <div className="grid items-center gap-3 px-2 sm:px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant grid-cols-[32px_1fr_auto] sm:grid-cols-[32px_1fr_110px_160px]">
           <div />
           <div>Lançamento</div>
-          <div className="text-right">Data</div>
-          <div className="text-right pr-7">Valor</div>
+          <div className="text-right hidden sm:block">Data</div>
+          <div className="text-right sm:pr-7">Valor</div>
         </div>
 
         <div>
@@ -373,8 +401,7 @@ export default function CreditCardsPage() {
               <div
                 key={item.installment_id}
                 onClick={() => setTxDetailOpen(item)}
-                className="grid items-center gap-3 px-3 py-3 border-b border-outline-variant last:border-b-0 cursor-pointer hover:bg-surface-container-low transition-colors"
-                style={{ gridTemplateColumns: '32px 1fr 110px auto' }}
+                className="grid items-center gap-3 px-2 sm:px-3 py-3 border-b border-outline-variant last:border-b-0 cursor-pointer hover:bg-surface-container-low transition-colors grid-cols-[32px_1fr_auto] sm:grid-cols-[32px_1fr_110px_auto]"
               >
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -412,7 +439,7 @@ export default function CreditCardsPage() {
                     {item.card_name} · {item.category_name || 'Sem categoria'} · {tipoLabel}
                   </div>
                 </div>
-                <div className="text-[11px] uppercase tracking-wider text-on-surface-variant text-right tabular-nums">
+                <div className="hidden sm:block text-[11px] uppercase tracking-wider text-on-surface-variant text-right tabular-nums">
                   {fmtDateBR(item.purchase_date)}
                 </div>
                 <div className="flex items-center gap-2 justify-end">
@@ -441,12 +468,12 @@ export default function CreditCardsPage() {
         </div>
       </section>
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
-        <section className="lg:col-span-4 bg-surface-container border border-outline-variant rounded-xl p-5">
+      {/* Charts (stacked) */}
+      <div className="space-y-6">
+        <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
           <StackedBarsChart data={monthSummaries} />
         </section>
-        <section className="lg:col-span-3 bg-surface-container border border-outline-variant rounded-xl p-5">
+        <section className="bg-surface-container border border-outline-variant rounded-xl p-5">
           <TreemapChart
             data={byCategory}
             label={`${PT_MONTHS_SHORT[selectedMonth - 1]} ${year}`}
@@ -490,8 +517,13 @@ export default function CreditCardsPage() {
       {monthDetailOpen && (
         <MonthDetailModal
           summary={monthDetailOpen}
+          summaries={monthSummaries}
           year={year}
           onClose={() => setMonthDetailOpen(null)}
+          onNavigate={(s) => {
+            setMonthDetailOpen(s)
+            setSelectedMonth(s.bill_month)
+          }}
           onTxClick={(t) => { setMonthDetailOpen(null); setTxDetailOpen(t) }}
           onEditBill={() => {
             setBillOpen({ year, month: monthDetailOpen.bill_month })
@@ -535,10 +567,12 @@ function MonthStrip({
   data,
   activeIdx,
   onSelect,
+  onOpen,
 }: {
   data: CreditCardMonthSummary[]
   activeIdx: number
   onSelect: (i: number) => void
+  onOpen: (i: number) => void
 }) {
   if (data.length === 0) {
     return <p className="text-sm text-on-surface-variant text-center py-8">Sem dados.</p>
@@ -624,6 +658,7 @@ function MonthStrip({
               <button
                 key={i}
                 onClick={() => onSelect(i)}
+                onDoubleClick={() => onOpen(i)}
                 className={`flex-shrink-0 rounded-xl px-3.5 py-3 flex flex-col justify-between text-left transition-all ${
                   isActive
                     ? 'border border-primary bg-primary/10'
@@ -697,9 +732,6 @@ function SpendHeatmap({
           <h3 className="text-sm font-semibold text-on-surface">
             Gastos por dia · {PT_MONTHS_SHORT[month - 1]} {year}
           </h3>
-          <div className="text-[10px] text-on-surface-variant uppercase tracking-wider mt-1">
-            Quanto mais escuro, mais gasto
-          </div>
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-on-surface-variant whitespace-nowrap">
           <span>Menos</span>
@@ -1179,14 +1211,18 @@ function AddTxModal({
 
 function MonthDetailModal({
   summary,
+  summaries,
   year,
   onClose,
+  onNavigate,
   onTxClick,
   onEditBill,
 }: {
   summary: CreditCardMonthSummary
+  summaries: CreditCardMonthSummary[]
   year: number
   onClose: () => void
+  onNavigate: (s: CreditCardMonthSummary) => void
   onTxClick: (item: CreditCardBillItem) => void
   onEditBill: () => void
 }) {
@@ -1200,29 +1236,97 @@ function MonthDetailModal({
   )
   const total = items.filter((i) => !i.is_refunded).reduce((acc, i) => acc + Number(i.amount), 0)
 
+  const idx = summaries.findIndex(
+    (s) => s.bill_month === summary.bill_month && s.bill_year === summary.bill_year,
+  )
+  const idxRef = useRef(idx)
+  useEffect(() => { idxRef.current = idx }, [idx])
+  const intervalRef = useRef<number | null>(null)
+  const canPrev = idx > 0
+  const canNext = idx >= 0 && idx < summaries.length - 1
+
+  const stopHold = () => {
+    if (intervalRef.current != null) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }
+  const stepOnce = (dir: -1 | 1) => {
+    const next = idxRef.current + dir
+    if (next < 0 || next >= summaries.length) return false
+    idxRef.current = next
+    onNavigate(summaries[next])
+    return true
+  }
+  const startHold = (dir: -1 | 1) => {
+    if (!stepOnce(dir)) return
+    intervalRef.current = window.setInterval(() => {
+      if (!stepOnce(dir)) stopHold()
+    }, 280)
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') stepOnce(-1)
+      else if (e.key === 'ArrowRight') stepOnce(1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      stopHold()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const navBtn = (dir: -1 | 1, disabled: boolean) => (
+    <button
+      type="button"
+      disabled={disabled}
+      onMouseDown={() => startHold(dir)}
+      onMouseUp={stopHold}
+      onMouseLeave={stopHold}
+      onTouchStart={(e) => { e.preventDefault(); startHold(dir) }}
+      onTouchEnd={stopHold}
+      onTouchCancel={stopHold}
+      aria-label={dir === -1 ? 'Mês anterior' : 'Próximo mês'}
+      className="w-9 h-9 rounded-lg flex items-center justify-center border border-outline-variant bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high disabled:opacity-40 disabled:cursor-not-allowed select-none"
+      title="Clique ou segure para navegar"
+    >
+      <span className="material-symbols-outlined text-base">
+        {dir === -1 ? 'chevron_left' : 'chevron_right'}
+      </span>
+    </button>
+  )
+
   return (
     <Modal
       onClose={onClose}
       width="lg"
       title={`Gastos de ${PT_MONTHS[summary.bill_month - 1]} ${year}`}
     >
-      <div className="mb-3 flex items-center gap-2">
-        <span className="material-symbols-outlined text-primary text-base">calendar_today</span>
-        <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">
-          {PT_MONTHS[summary.bill_month - 1]} {year}
-        </span>
+      <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary text-base">calendar_today</span>
+          <span className="text-[10px] uppercase tracking-wider text-primary font-semibold">
+            {PT_MONTHS[summary.bill_month - 1]} {year}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {navBtn(-1, !canPrev)}
+          <span className="text-[10px] uppercase tracking-wider text-on-surface-variant tabular-nums">
+            {idx + 1} / {summaries.length}
+          </span>
+          {navBtn(1, !canNext)}
+        </div>
       </div>
       <div className="text-xs text-on-surface-variant mb-3">
         {items.length} {items.length === 1 ? 'lançamento' : 'lançamentos'} · total{' '}
         <span className="font-semibold text-on-surface tabular-nums">{fmt(total)}</span>
       </div>
 
-      <div
-        className="grid gap-3 px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant"
-        style={{ gridTemplateColumns: '1fr 110px 110px' }}
-      >
+      <div className="grid gap-3 px-2 sm:px-3 pb-2 border-b border-outline-variant text-[10px] uppercase tracking-wider text-on-surface-variant grid-cols-[1fr_auto] sm:grid-cols-[1fr_110px_110px]">
         <div>Lançamento</div>
-        <div className="text-right">Data</div>
+        <div className="text-right hidden sm:block">Data</div>
         <div className="text-right">Valor</div>
       </div>
 
@@ -1236,8 +1340,7 @@ function MonthDetailModal({
           <div
             key={tx.installment_id}
             onClick={() => onTxClick(tx)}
-            className="grid gap-3 items-center px-3 py-2.5 rounded-md cursor-pointer border-b border-outline-variant last:border-b-0 hover:bg-surface-container-low transition-colors"
-            style={{ gridTemplateColumns: '1fr 110px 110px' }}
+            className="grid gap-3 items-center px-2 sm:px-3 py-2.5 rounded-md cursor-pointer border-b border-outline-variant last:border-b-0 hover:bg-surface-container-low transition-colors grid-cols-[1fr_auto] sm:grid-cols-[1fr_110px_110px]"
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div
@@ -1260,10 +1363,10 @@ function MonthDetailModal({
                 </div>
               </div>
             </div>
-            <div className="text-[11px] uppercase tracking-wider text-on-surface-variant text-right tabular-nums">
+            <div className="hidden sm:block text-[11px] uppercase tracking-wider text-on-surface-variant text-right tabular-nums">
               {fmtDateBR(tx.purchase_date)}
             </div>
-            <div className={`text-sm font-medium text-right tabular-nums ${tx.is_refunded ? 'line-through text-on-surface-variant' : 'text-error'}`}>
+            <div className={`text-sm font-medium text-right tabular-nums whitespace-nowrap ${tx.is_refunded ? 'line-through text-on-surface-variant' : 'text-error'}`}>
               −{fmt(Number(tx.amount))}
             </div>
           </div>
@@ -1915,6 +2018,56 @@ function Modal({
         </header>
         {children}
       </div>
+    </div>
+  )
+}
+
+function CategoryFilterButton({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: { id: number; name: string; icon: string | null }[]
+  value: number | 'all'
+  onChange: (v: number | 'all') => void
+}) {
+  const active = value !== 'all'
+  const label = active
+    ? categories.find((c) => c.id === value)?.name || 'Categoria'
+    : 'Categoria'
+  return (
+    <div className="relative">
+      <select
+        value={value === 'all' ? 'all' : String(value)}
+        onChange={(e) => onChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+        className={`appearance-none pl-8 pr-7 py-1.5 text-xs rounded-lg border cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
+          active
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-outline-variant bg-surface-container text-on-surface-variant hover:bg-surface-container-high'
+        }`}
+        title="Filtrar por categoria"
+      >
+        <option value="all">Todas categorias</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
+      <span
+        className={`material-symbols-outlined text-sm absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none ${
+          active ? 'text-primary' : 'text-on-surface-variant'
+        }`}
+      >
+        sell
+      </span>
+      <span
+        className={`material-symbols-outlined text-base absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none ${
+          active ? 'text-primary' : 'text-on-surface-variant'
+        }`}
+      >
+        expand_more
+      </span>
+      {/* keep label accessible to screen readers */}
+      <span className="sr-only">{label}</span>
     </div>
   )
 }
