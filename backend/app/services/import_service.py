@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -6,7 +7,9 @@ from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BankImport, StagedTransaction, Transaction, Category
-from app.services import parser_service, llm_service
+from app.services import parser_service, llm_service, docling_service
+
+logger = logging.getLogger(__name__)
 
 
 async def get_categories_for_llm(db: AsyncSession) -> list[dict]:
@@ -57,8 +60,21 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
                 db.add(staged)
 
         elif bank_import.file_type == "pdf":
-            pdf_text = await parser_service.extract_pdf_text_async(file_path)
-            llm_results = await llm_service.extract_and_categorize_pdf(pdf_text, categories)
+            try:
+                pdf_markdown = await docling_service.pdf_to_markdown_async(file_path)
+                logger.info(
+                    "PDF %s convertido via Granite-Docling-258M (%d chars markdown)",
+                    bank_import.filename,
+                    len(pdf_markdown),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Granite-Docling falhou (%s); usando fallback pdfplumber.",
+                    exc,
+                )
+                pdf_markdown = await parser_service.extract_pdf_text_async(file_path)
+
+            llm_results = await llm_service.extract_and_categorize_pdf(pdf_markdown, categories)
 
             for llm_row in llm_results:
                 raw_amount = _parse_amount(str(llm_row.get("amount", 0)))
