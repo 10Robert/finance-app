@@ -581,6 +581,12 @@ class CreditCardImportPdfPreviewItem(BaseModel):
     amount: Decimal
     suggested_category_id: Optional[int] = None
     suggested_category_name: Optional[str] = None
+    installment_number: int = 1
+    installment_count: int = 1
+    is_refund: bool = False
+    is_duplicate: bool = False
+    duplicate_reason: Optional[str] = None  # ex: "follow-up de parcela já cadastrada"
+    existing_expense_id: Optional[int] = None
 
 
 class CreditCardBulkCreateItem(BaseModel):

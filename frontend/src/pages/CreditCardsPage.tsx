@@ -2192,6 +2192,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 /* ─── PDF Import modal ────────────────────────────────────────────────── */
 
+type ReviewItem = CreditCardImportPreviewItem & { accepted: boolean }
+
 function PdfImportModal({
   cards, categories, onClose, onDone,
 }: {
@@ -2202,32 +2204,47 @@ function PdfImportModal({
 }) {
   const [cardId, setCardId] = useState<number>(cards[0]?.id ?? 0)
   const [file, setFile] = useState<File | null>(null)
-  const [items, setItems] = useState<CreditCardImportPreviewItem[] | null>(null)
+  const [items, setItems] = useState<ReviewItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const parse = useMutation({
     mutationFn: () => importCreditCardPdf(cardId, file!),
-    onSuccess: (data) => setItems(data.items),
+    onSuccess: (data) =>
+      setItems(
+        data.items.map((it) => ({
+          ...it,
+          // Já cadastrados: vem desmarcado por padrão (usuário pode reativar)
+          accepted: !it.is_duplicate,
+        })),
+      ),
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setError(e?.response?.data?.detail || 'Erro ao processar o PDF')
     },
   })
 
   const confirm = useMutation({
-    mutationFn: () => bulkCreateCreditCardExpenses({
-      credit_card_id: cardId,
-      items: (items || []).map((it) => ({
-        description: it.description,
-        amount: Number(it.amount),
-        purchase_date: it.purchase_date,
-        category_id: it.suggested_category_id ?? null,
-        installment_count: 1,
-      })),
-    }),
+    mutationFn: () => {
+      const accepted = (items || []).filter((it) => it.accepted)
+      return bulkCreateCreditCardExpenses({
+        credit_card_id: cardId,
+        items: accepted.map((it) => ({
+          description: it.description,
+          amount: Number(it.amount) * Math.max(1, it.installment_count),
+          purchase_date: it.purchase_date,
+          category_id: it.suggested_category_id ?? null,
+          installment_count: Math.max(1, it.installment_count),
+        })),
+      })
+    },
     onSuccess: onDone,
   })
 
-  const totalParsed = items?.reduce((acc, i) => acc + Number(i.amount), 0) || 0
+  const acceptedItems = (items || []).filter((it) => it.accepted)
+  const totalParsed = acceptedItems.reduce(
+    (acc, i) => acc + Number(i.amount) * Math.max(1, i.installment_count),
+    0,
+  )
+  const duplicateCount = (items || []).filter((it) => it.is_duplicate).length
 
   if (items === null) {
     return (
@@ -2279,9 +2296,17 @@ function PdfImportModal({
   return (
     <Modal onClose={onClose} title={`Revisão da Importação (${items.length} itens)`} width="lg">
       <div className="space-y-4">
-        <div className="flex items-center justify-between p-3 rounded-lg bg-surface-container-low border border-outline-variant">
-          <p className="text-sm text-on-surface-variant">Total identificado</p>
-          <p className="text-lg font-semibold text-on-surface">{fmt(totalParsed)}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant">
+            <p className="text-xs text-on-surface-variant">A importar (selecionados)</p>
+            <p className="text-lg font-semibold text-on-surface">
+              {acceptedItems.length} · {fmt(totalParsed)}
+            </p>
+          </div>
+          <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant">
+            <p className="text-xs text-on-surface-variant">Já registrados (desmarcados)</p>
+            <p className="text-lg font-semibold text-on-surface-variant">{duplicateCount}</p>
+          </div>
         </div>
         <div className="space-y-2 max-h-96 overflow-y-auto">
           {items.length === 0 && (
@@ -2292,54 +2317,92 @@ function PdfImportModal({
           {items.map((it, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 p-3 rounded-lg border border-outline-variant bg-surface-container-low"
+              className={`p-3 rounded-lg border bg-surface-container-low transition-opacity ${
+                it.is_duplicate
+                  ? 'border-yellow-700/40 bg-yellow-900/5'
+                  : 'border-outline-variant'
+              } ${!it.accepted ? 'opacity-50' : ''}`}
             >
-              <input
-                type="date"
-                value={it.purchase_date}
-                onChange={(e) => {
-                  const next = [...items]; next[i] = { ...it, purchase_date: e.target.value }; setItems(next)
-                }}
-                className="w-36 px-2 py-1 text-xs rounded bg-bg border border-outline-variant text-on-surface"
-              />
-              <input
-                type="text"
-                value={it.description}
-                onChange={(e) => {
-                  const next = [...items]; next[i] = { ...it, description: e.target.value }; setItems(next)
-                }}
-                className="flex-1 px-2 py-1 text-sm rounded bg-bg border border-outline-variant text-on-surface min-w-0"
-              />
-              <select
-                value={it.suggested_category_id ?? ''}
-                onChange={(e) => {
-                  const next = [...items]
-                  next[i] = { ...it, suggested_category_id: e.target.value ? Number(e.target.value) : null }
-                  setItems(next)
-                }}
-                className="w-36 px-2 py-1 text-xs rounded bg-bg border border-outline-variant text-on-surface"
-              >
-                <option value="">Sem categoria</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                step="0.01"
-                value={it.amount}
-                onChange={(e) => {
-                  const next = [...items]; next[i] = { ...it, amount: Number(e.target.value) }; setItems(next)
-                }}
-                className="w-24 px-2 py-1 text-sm rounded bg-bg border border-outline-variant text-on-surface text-right"
-              />
-              <button
-                onClick={() => setItems(items.filter((_, j) => j !== i))}
-                className="text-on-surface-variant hover:text-error"
-                title="Remover"
-              >
-                <span className="material-symbols-outlined text-base">delete</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={it.accepted}
+                  onChange={(e) => {
+                    const next = [...items]; next[i] = { ...it, accepted: e.target.checked }; setItems(next)
+                  }}
+                  className="w-4 h-4 rounded border-outline-variant accent-primary cursor-pointer flex-shrink-0"
+                  title={it.accepted ? 'Desmarcar' : 'Marcar para importar'}
+                />
+                <input
+                  type="date"
+                  value={it.purchase_date}
+                  onChange={(e) => {
+                    const next = [...items]; next[i] = { ...it, purchase_date: e.target.value }; setItems(next)
+                  }}
+                  className="w-36 px-2 py-1 text-xs rounded bg-bg border border-outline-variant text-on-surface"
+                />
+                <input
+                  type="text"
+                  value={it.description}
+                  onChange={(e) => {
+                    const next = [...items]; next[i] = { ...it, description: e.target.value }; setItems(next)
+                  }}
+                  className="flex-1 px-2 py-1 text-sm rounded bg-bg border border-outline-variant text-on-surface min-w-0"
+                />
+                <select
+                  value={it.suggested_category_id ?? ''}
+                  onChange={(e) => {
+                    const next = [...items]
+                    next[i] = { ...it, suggested_category_id: e.target.value ? Number(e.target.value) : null }
+                    setItems(next)
+                  }}
+                  className="w-36 px-2 py-1 text-xs rounded bg-bg border border-outline-variant text-on-surface"
+                >
+                  <option value="">Sem categoria</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={it.amount}
+                  onChange={(e) => {
+                    const next = [...items]; next[i] = { ...it, amount: Number(e.target.value) }; setItems(next)
+                  }}
+                  className="w-24 px-2 py-1 text-sm rounded bg-bg border border-outline-variant text-on-surface text-right"
+                />
+                <button
+                  onClick={() => setItems(items.filter((_, j) => j !== i))}
+                  className="text-on-surface-variant hover:text-error"
+                  title="Remover"
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
+                </button>
+              </div>
+              {(it.installment_count > 1 || it.is_refund || it.is_duplicate) && (
+                <div className="flex flex-wrap items-center gap-2 mt-2 ml-7 text-xs">
+                  {it.installment_count > 1 && (
+                    <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
+                      Parcelado · {it.installment_number}/{it.installment_count} ·{' '}
+                      total {fmt(Number(it.amount) * it.installment_count)}
+                    </span>
+                  )}
+                  {it.is_refund && (
+                    <span className="px-2 py-0.5 rounded-full bg-tertiary/15 text-tertiary font-medium">
+                      Estorno / crédito
+                    </span>
+                  )}
+                  {it.is_duplicate && (
+                    <span className="px-2 py-0.5 rounded-full bg-yellow-700/20 text-yellow-300 font-medium">
+                      <span className="material-symbols-outlined text-xs align-middle mr-1">
+                        check_circle
+                      </span>
+                      Já registrado{it.duplicate_reason ? ` · ${it.duplicate_reason}` : ''}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -2359,10 +2422,12 @@ function PdfImportModal({
             </button>
             <button
               onClick={() => confirm.mutate()}
-              disabled={items.length === 0 || confirm.isPending}
+              disabled={acceptedItems.length === 0 || confirm.isPending}
               className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
             >
-              {confirm.isPending ? 'Importando...' : `Importar ${items.length} gasto${items.length !== 1 ? 's' : ''}`}
+              {confirm.isPending
+                ? 'Importando...'
+                : `Importar ${acceptedItems.length} gasto${acceptedItems.length !== 1 ? 's' : ''}`}
             </button>
           </div>
         </div>
