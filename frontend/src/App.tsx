@@ -74,7 +74,10 @@ export default function App() {
       )}
 
       {/* Main */}
-      <div className={`flex-1 ${sidebarOpen ? 'ml-64' : 'ml-0'} flex flex-col min-h-screen transition-all duration-200`}>
+      <div
+        className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-200 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}
+        style={sidebarOpen ? { width: 'calc(100% - 16rem)' } : undefined}
+      >
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
