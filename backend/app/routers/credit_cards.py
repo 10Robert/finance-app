@@ -1,6 +1,7 @@
 """Credit card management: cards, purchases, installments, subscriptions, bills."""
 from __future__ import annotations
 
+import asyncio
 import calendar
 import shutil
 from datetime import date
@@ -726,12 +727,25 @@ async def import_pdf_parse(
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Extract: prefer Docling markdown (multi-column safe); fallback to pdfplumber
-    try:
-        pdf_text = await docling_service.pdf_to_markdown_async(file_path)
-        logger.info("Fatura %s convertida via Granite-Docling (%d chars)", file.filename, len(pdf_text))
-    except Exception as exc:
-        logger.warning("Granite-Docling falhou (%s); usando fallback pdfplumber", exc)
+    # Extract: prefer Docling markdown (multi-column safe); fallback to pdfplumber.
+    # Em máquinas sem GPU, Docling roda VLM em CPU e demora minutos por página —
+    # nesse caso pulamos direto para pdfplumber. Timeout protege contra qualquer
+    # cenário em que o converter trave (download de modelo, etc.).
+    pdf_text = ""
+    if docling_service.is_available():
+        try:
+            pdf_text = await asyncio.wait_for(
+                docling_service.pdf_to_markdown_async(file_path), timeout=90
+            )
+            logger.info(
+                "Fatura %s convertida via Granite-Docling (%d chars)",
+                file.filename, len(pdf_text),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Granite-Docling excedeu 90s; usando fallback pdfplumber")
+        except Exception as exc:
+            logger.warning("Granite-Docling falhou (%s); usando fallback pdfplumber", exc)
+    if not pdf_text:
         pdf_text = await parser_service.extract_pdf_text_async(file_path)
     if not pdf_text or not pdf_text.strip():
         raise HTTPException(400, "Could not extract text from PDF")
