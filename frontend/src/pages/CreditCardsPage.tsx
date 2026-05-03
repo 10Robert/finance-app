@@ -575,14 +575,19 @@ function MonthStrip({
   onOpen: (i: number) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [canPrev, setCanPrev] = useState(false)
-  const [canNext, setCanNext] = useState(false)
+  const [hasOverflowPrev, setHasOverflowPrev] = useState(false)
+  const [hasOverflowNext, setHasOverflowNext] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragState = useRef<{ startX: number; startScroll: number; moved: boolean } | null>(null)
+
+  const canPrev = activeIdx > 0
+  const canNext = activeIdx >= 0 && activeIdx < data.length - 1
 
   const updateBounds = () => {
     const el = scrollRef.current
     if (!el) return
-    setCanPrev(el.scrollLeft > 2)
-    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
+    setHasOverflowPrev(el.scrollLeft > 2)
+    setHasOverflowNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 2)
   }
 
   useEffect(() => {
@@ -614,11 +619,44 @@ function MonthStrip({
     }
   }, [activeIdx])
 
-  const scrollByCards = (dir: -1 | 1) => {
+  const goToMonth = (dir: -1 | 1) => {
+    const next = activeIdx + dir
+    if (next < 0 || next >= data.length) return
+    onSelect(next)
+  }
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
     const el = scrollRef.current
     if (!el) return
-    const step = (140 + 12) * 3
-    el.scrollBy({ left: dir * step, behavior: 'smooth' })
+    dragState.current = { startX: e.clientX, startScroll: el.scrollLeft, moved: false }
+    el.setPointerCapture(e.pointerId)
+  }
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = dragState.current
+    const el = scrollRef.current
+    if (!st || !el) return
+    const dx = e.clientX - st.startX
+    if (!st.moved && Math.abs(dx) > 4) {
+      st.moved = true
+      setIsDragging(true)
+    }
+    if (st.moved) {
+      el.scrollLeft = st.startScroll - dx
+    }
+  }
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = dragState.current
+    const el = scrollRef.current
+    if (st && el && el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId)
+    }
+    dragState.current = null
+    if (isDragging) {
+      requestAnimationFrame(() => setIsDragging(false))
+    }
   }
 
   if (data.length === 0) {
@@ -653,11 +691,11 @@ function MonthStrip({
     <div className="relative">
       <button
         type="button"
-        onClick={() => scrollByCards(-1)}
+        onClick={() => goToMonth(-1)}
         disabled={!canPrev}
-        aria-label="Cards anteriores"
-        className={`absolute left-0 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full border border-outline-variant bg-surface-container/95 backdrop-blur text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-all ${
-          canPrev ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        aria-label="Mês anterior"
+        className={`absolute -left-2 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full border border-outline-variant bg-surface-container/95 backdrop-blur text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-all ${
+          canPrev ? 'opacity-100' : 'opacity-30 pointer-events-none'
         }`}
         style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
       >
@@ -665,31 +703,45 @@ function MonthStrip({
       </button>
       <button
         type="button"
-        onClick={() => scrollByCards(1)}
+        onClick={() => goToMonth(1)}
         disabled={!canNext}
-        aria-label="Próximos cards"
-        className={`absolute right-0 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full border border-outline-variant bg-surface-container/95 backdrop-blur text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-all ${
-          canNext ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        aria-label="Próximo mês"
+        className={`absolute -right-2 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full border border-outline-variant bg-surface-container/95 backdrop-blur text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface flex items-center justify-center transition-all ${
+          canNext ? 'opacity-100' : 'opacity-30 pointer-events-none'
         }`}
         style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
       >
         <span className="material-symbols-outlined text-lg">chevron_right</span>
       </button>
-      {canPrev && (
+      {hasOverflowPrev && (
         <div
           aria-hidden
           className="absolute left-0 top-0 bottom-0 w-12 z-10 pointer-events-none"
           style={{ background: 'linear-gradient(to right, var(--color-surface-container, #18181b), transparent)' }}
         />
       )}
-      {canNext && (
+      {hasOverflowNext && (
         <div
           aria-hidden
           className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none"
           style={{ background: 'linear-gradient(to left, var(--color-surface-container, #18181b), transparent)' }}
         />
       )}
-      <div ref={scrollRef} className="relative overflow-x-auto cc-carousel">
+      <div
+        ref={scrollRef}
+        className="relative overflow-x-auto cc-carousel select-none"
+        style={{ cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'pan-y' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={(e) => {
+          if (isDragging) {
+            e.stopPropagation()
+            e.preventDefault()
+          }
+        }}
+      >
       <div className="relative" style={{ width: totalW, height: cardH }}>
         <svg
           width={totalW}
