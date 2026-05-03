@@ -630,7 +630,6 @@ function MonthStrip({
     const el = scrollRef.current
     if (!el) return
     dragState.current = { startX: e.clientX, startScroll: el.scrollLeft, moved: false }
-    el.setPointerCapture(e.pointerId)
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -641,6 +640,9 @@ function MonthStrip({
     if (!st.moved && Math.abs(dx) > 4) {
       st.moved = true
       setIsDragging(true)
+      try {
+        el.setPointerCapture(e.pointerId)
+      } catch {}
     }
     if (st.moved) {
       el.scrollLeft = st.startScroll - dx
@@ -650,7 +652,7 @@ function MonthStrip({
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     const st = dragState.current
     const el = scrollRef.current
-    if (st && el && el.hasPointerCapture(e.pointerId)) {
+    if (el && el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId)
     }
     dragState.current = null
