@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from threading import Lock
 
@@ -20,6 +21,25 @@ logger = logging.getLogger(__name__)
 
 _converter = None
 _converter_lock = Lock()
+
+
+def is_available() -> bool:
+    """Whether running Docling on this machine is sane.
+
+    Granite-Docling is a 258M-param VLM. On CPU it takes minutes per page,
+    which makes the import endpoint look hung. We auto-disable it unless a
+    CUDA GPU is available, and let the user force-override via env var.
+    """
+    override = os.environ.get("USE_DOCLING", "").strip().lower()
+    if override in ("0", "false", "no", "off"):
+        return False
+    if override in ("1", "true", "yes", "on"):
+        return True
+    try:
+        import torch
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
 
 
 def _get_converter():
