@@ -407,6 +407,12 @@ export interface CreditCardImportPreviewItem {
   amount: number
   suggested_category_id: number | null
   suggested_category_name: string | null
+  installment_number: number
+  installment_count: number
+  is_refund: boolean
+  is_duplicate: boolean
+  duplicate_reason: string | null
+  existing_expense_id: number | null
 }
 
 // Monthly Entries (overtime / refund / late / absence / medical certificate launches)

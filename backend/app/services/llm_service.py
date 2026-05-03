@@ -27,12 +27,40 @@ Para cada transação, retorne um array JSON onde cada elemento tem:
 
 Retorne APENAS JSON válido, sem blocos de código markdown, sem explicação."""
 
-PDF_EXTRACT_PROMPT = """Você é um parser de extratos bancários e faturas de cartão.
+PDF_EXTRACT_PROMPT = """Você é um parser de extratos bancários e faturas de cartão de crédito.
 
 Abaixo está o conteúdo de um extrato/fatura em **Markdown estruturado**
 (tabelas em formato markdown, cabeçalhos preservados). Use a estrutura das
 tabelas para identificar colunas (data, descrição, valor) com precisão.
-Extraia TODAS as transações e categorize cada uma.
+
+INCLUA transações destas seções:
+- "Lançamentos: compras e saques" (todas as bandeiras/finais de cartão)
+- "Lançamentos internacionais" (use o valor em R$, não em USD/BRL)
+- "Lançamentos: produtos e serviços"
+- "Outros lançamentos" (estornos, créditos)
+
+EXCLUA destas seções (NÃO retorne nada delas):
+- "Compras parceladas - próximas faturas" (são parcelas FUTURAS, já cadastradas)
+- "Encargos cobrados nesta fatura" (juros, multa, IOF — totais agregados)
+- "Simulação de Compras parc.", "Simulação Saque Cash", "Demais Taxas..."
+- Resumo da fatura, Limites de crédito, dados de cabeçalho/rodapé
+- Linhas de total/subtotal ("Lançamentos no cartão (final ...)", "Total...")
+
+DETECÇÃO DE PARCELAS:
+Quando a descrição contiver padrão "NN/MM" no final (ex: "MERCADO*ITEM 02/06",
+"MANIA DE CAMISA 01/02", "EC *PICHAUINFO01/12"):
+- "installment_number": NN (número da parcela atual)
+- "installment_count": MM (total de parcelas)
+- "cleaned_description": descrição SEM o sufixo "NN/MM"
+
+Quando NÃO houver parcelas (compra à vista ou assinatura):
+- "installment_number": 1
+- "installment_count": 1
+
+VALORES NEGATIVOS (estornos): linhas como "ESTORNO IOF -5,90", "Google One -0,81",
+ou "PDFSIMPLI - 168,92" são créditos/estornos. Retorne com:
+- "amount": valor POSITIVO (sem o sinal negativo)
+- "type": "income" (para diferenciar de gastos)
 
 Categorias disponíveis (use exatamente esses nomes):
 {categories_json}
@@ -41,13 +69,16 @@ Conteúdo do extrato (markdown):
 {pdf_text}
 
 Retorne um array JSON onde cada elemento tem:
-- "date": "YYYY-MM-DD"
-- "description": descrição original da transação do extrato
-- "amount": valor numérico (positivo para créditos/receitas, negativo para débitos/despesas)
+- "date": "YYYY-MM-DD" (use o ano da fatura — se a data for de meses anteriores
+  ao fechamento, use o mesmo ano; se posterior, considere ano anterior)
+- "description": descrição original da transação (com NN/MM se houver)
+- "cleaned_description": descrição curta e legível em português (SEM "NN/MM")
+- "amount": valor numérico POSITIVO em R$
 - "type": "expense" ou "income"
+- "installment_number": número da parcela atual (1 se não parcelado)
+- "installment_count": total de parcelas (1 se não parcelado)
 - "category": nome exato da categoria da lista acima
 - "confidence": 0.0 a 1.0
-- "cleaned_description": descrição curta e legível em português
 
 Retorne APENAS JSON válido, sem blocos de código markdown."""
 
@@ -113,8 +144,14 @@ async def categorize_transactions(transactions: list[dict], categories: list[dic
     return results
 
 
-def _chunk_by_lines(text: str, max_lines: int = 60) -> list[str]:
-    """Split text into chunks by line, trying not to break transactions apart."""
+def _chunk_by_lines(text: str, max_lines: int = 400) -> list[str]:
+    """Split text into chunks by line, trying not to break transactions apart.
+
+    Default max_lines is generous — faturas inteiras costumam caber em
+    uma única chamada quando o markdown vem do Granite-Docling (compacto).
+    Quebrar sub-seções como 'Lançamentos internacionais' em chunks separados
+    fazia o LLM perdê-las.
+    """
     lines = text.splitlines()
     if len(lines) <= max_lines:
         return [text]
@@ -126,8 +163,10 @@ def _chunk_by_lines(text: str, max_lines: int = 60) -> list[str]:
 
 async def extract_and_categorize_pdf(pdf_text: str, categories: list[dict]) -> list[dict]:
     """Send PDF text to Claude for extraction and categorization."""
-    # Chunk by lines (most extracts have one transaction per line)
-    chunks = _chunk_by_lines(pdf_text, max_lines=60)
+    # Chunk only se realmente for muito grande — caso contrário, mandar tudo junto
+    # garante que o LLM enxergue a fatura inteira (rodapés, seções de juros e
+    # parcelas-futuras precisam estar visíveis para que ele saiba o que IGNORAR).
+    chunks = _chunk_by_lines(pdf_text, max_lines=400)
 
     results = []
     for chunk_index, chunk in enumerate(chunks):

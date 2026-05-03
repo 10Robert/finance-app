@@ -33,7 +33,27 @@ from app.schemas import (
     CreditCardBulkCreate,
     AnticipateInstallmentRequest,
 )
-from app.services import parser_service, llm_service
+import logging
+import re
+
+from app.services import parser_service, llm_service, docling_service
+
+logger = logging.getLogger(__name__)
+
+# Padrão "NN/MM" no final da descrição (com possível espaço): "ITEM 02/06"
+_INSTALLMENT_RE = re.compile(r"\s*(\d{1,2})\s*/\s*(\d{1,2})\s*$")
+
+
+def _strip_installment_marker(desc: str) -> str:
+    """Remove sufixo '02/06', '01/12' etc. da descrição original."""
+    return _INSTALLMENT_RE.sub("", desc).strip()
+
+
+def _normalize_desc(desc: str) -> str:
+    """Normaliza descrição para comparação: minúsculas, sem espaços extras,
+    sem o sufixo de parcela. Usado para detectar duplicatas."""
+    base = _strip_installment_marker(desc)
+    return re.sub(r"\s+", " ", base).strip().lower()
 
 router = APIRouter()
 
@@ -679,7 +699,17 @@ async def import_pdf_parse(
 ):
     """Upload a credit-card statement PDF, returns parsed transactions for review.
 
-    The frontend must POST the curated list back to /expenses/bulk to commit.
+    Pipeline:
+    1) PDF -> markdown estruturado via Granite-Docling-258M (fallback pdfplumber).
+       Markdown preserva o layout multi-coluna do Itaú, que pdfplumber embaralha.
+    2) LLM extrai TODAS as seções (compras, internacionais, produtos/serviços,
+       outros) e ignora "Compras parceladas - próximas faturas" + encargos
+       agregados. Detecta parcelas pelo padrão "NN/MM" na descrição.
+    3) Marca cada item como duplicata se já existir uma despesa equivalente
+       cadastrada para o cartão. O frontend deve mostrar "já registrado" e
+       desmarcar a checkbox por padrão.
+
+    O frontend envia a lista curada para /expenses/bulk para confirmar.
     """
     if not file.filename:
         raise HTTPException(400, "No filename provided")
@@ -696,9 +726,14 @@ async def import_pdf_parse(
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Parse
-    pdf_text = await parser_service.extract_pdf_text_async(file_path)
-    if not pdf_text.strip():
+    # Extract: prefer Docling markdown (multi-column safe); fallback to pdfplumber
+    try:
+        pdf_text = await docling_service.pdf_to_markdown_async(file_path)
+        logger.info("Fatura %s convertida via Granite-Docling (%d chars)", file.filename, len(pdf_text))
+    except Exception as exc:
+        logger.warning("Granite-Docling falhou (%s); usando fallback pdfplumber", exc)
+        pdf_text = await parser_service.extract_pdf_text_async(file_path)
+    if not pdf_text or not pdf_text.strip():
         raise HTTPException(400, "Could not extract text from PDF")
 
     # Categorize via LLM
@@ -709,25 +744,102 @@ async def import_pdf_parse(
 
     parsed = await llm_service.extract_and_categorize_pdf(pdf_text, cat_payload)
 
-    # Filter to expenses only, normalize
+    # Pre-carrega despesas existentes do cartão (para detecção de duplicatas).
+    # Carregamos as parcelas para conseguirmos checar o bill_period de cada.
+    existing_q = await db.execute(
+        select(CreditCardExpense)
+        .options(selectinload(CreditCardExpense.installments))
+        .where(CreditCardExpense.credit_card_id == card_id)
+    )
+    existing_expenses = list(existing_q.scalars().all())
+
+    # Index por descrição normalizada para lookup rápido
+    by_norm_desc: dict[str, list[CreditCardExpense]] = {}
+    for exp in existing_expenses:
+        by_norm_desc.setdefault(_normalize_desc(exp.description), []).append(exp)
+
     items: list[dict] = []
     for p in parsed:
-        if p.get("type") != "expense":
-            continue
         try:
             amount = abs(float(p.get("amount") or 0))
         except (TypeError, ValueError):
             continue
         if amount <= 0:
             continue
+
+        date_str = p.get("date") or ""
+        try:
+            purchase_date = parser_service.parse_date(date_str)
+        except (ValueError, TypeError):
+            continue
+
+        original_desc = (p.get("description") or "").strip()
+        cleaned = (p.get("cleaned_description") or original_desc).strip()
+        cleaned = _strip_installment_marker(cleaned)
+
+        # Parcela: confia no LLM, mas valida com regex contra a descrição original
+        try:
+            inst_n = max(1, int(p.get("installment_number") or 1))
+            inst_count = max(1, int(p.get("installment_count") or 1))
+        except (TypeError, ValueError):
+            inst_n, inst_count = 1, 1
+        m = _INSTALLMENT_RE.search(original_desc)
+        if m:
+            try:
+                inst_n = int(m.group(1))
+                inst_count = int(m.group(2))
+            except ValueError:
+                pass
+
+        is_refund = (p.get("type") == "income")
         cat_name = p.get("category") or ""
         suggested_id = cat_by_name.get(cat_name.lower())
+
+        # Detecção de duplicata
+        is_duplicate = False
+        duplicate_reason: str | None = None
+        existing_id: int | None = None
+        norm_key = _normalize_desc(cleaned)
+
+        if inst_count > 1 and inst_n > 1:
+            # Continuação de parcela: deve já existir um expense com mesma descrição
+            # base e mesmo installment_count para esse cartão.
+            for exp in by_norm_desc.get(norm_key, []):
+                if exp.installment_count == inst_count:
+                    is_duplicate = True
+                    duplicate_reason = f"parcela {inst_n}/{inst_count} já cadastrada"
+                    existing_id = exp.id
+                    break
+
+        if not is_duplicate:
+            # Compara mesma data + valor (com tolerância) para detectar
+            # tanto compras avulsas quanto a primeira parcela já importada antes.
+            for exp in by_norm_desc.get(norm_key, []):
+                same_date = exp.purchase_date == purchase_date
+                if inst_count > 1:
+                    # Total esperado = parcela * count
+                    expected_total = round(amount * inst_count, 2)
+                    same_amount = abs(float(exp.amount) - expected_total) < 0.02
+                else:
+                    same_amount = abs(float(exp.amount) - amount) < 0.02
+                if same_date and same_amount:
+                    is_duplicate = True
+                    duplicate_reason = "compra já cadastrada"
+                    existing_id = exp.id
+                    break
+
         items.append({
-            "purchase_date": p.get("date"),
-            "description": p.get("cleaned_description") or p.get("description") or "",
+            "purchase_date": purchase_date.isoformat(),
+            "description": cleaned or original_desc,
             "amount": amount,
             "suggested_category_id": suggested_id,
             "suggested_category_name": cat_name if suggested_id else None,
+            "installment_number": inst_n,
+            "installment_count": inst_count,
+            "is_refund": is_refund,
+            "is_duplicate": is_duplicate,
+            "duplicate_reason": duplicate_reason,
+            "existing_expense_id": existing_id,
         })
 
     return {"items": items, "card_id": card_id}
