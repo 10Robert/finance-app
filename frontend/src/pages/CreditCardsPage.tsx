@@ -1243,10 +1243,14 @@ function AddTxModal({
   const [installments, setInstallments] = useState(2)
   const [isSubscription, setIsSubscription] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
   const submit = useMutation({
     mutationFn: createCreditCardExpense,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      toast.success('Gasto lançado.')
+      onCreated()
+    },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setError(e?.response?.data?.detail || 'Erro ao lançar gasto')
     },
@@ -1797,6 +1801,7 @@ function CardFormModal({
   onDeleted: () => void
 }) {
   const confirm = useConfirm()
+  const toast = useToast()
   const [name, setName] = useState(card?.name || '')
   const [brand, setBrand] = useState(card?.brand || '')
   const [color, setColor] = useState(card?.color || CARD_COLORS[0])
@@ -1818,7 +1823,10 @@ function CardFormModal({
       if (card) return updateCreditCard(card.id, payload)
       return createCreditCard(payload)
     },
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success(card ? 'Cartão atualizado.' : 'Cartão criado.')
+      onSaved()
+    },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setError(e?.response?.data?.detail || 'Erro ao salvar cartão')
     },
@@ -1826,7 +1834,10 @@ function CardFormModal({
 
   const remove = useMutation({
     mutationFn: () => deleteCreditCard(card!.id),
-    onSuccess: onDeleted,
+    onSuccess: () => {
+      toast.success('Cartão excluído.')
+      onDeleted()
+    },
   })
 
   const handleSubmit = () => {
@@ -2103,12 +2114,16 @@ function AnticipateModal({
   const now = new Date()
   const [targetMonth, setTargetMonth] = useState(now.getMonth() + 1)
   const [targetYear, setTargetYear] = useState(now.getFullYear())
+  const toast = useToast()
 
   const submit = useMutation({
     mutationFn: () => anticipateInstallment(item.installment_id, {
       target_month: targetMonth, target_year: targetYear,
     }),
-    onSuccess: onDone,
+    onSuccess: () => {
+      toast.success('Parcela antecipada.')
+      onDone()
+    },
   })
 
   return (
@@ -2178,6 +2193,7 @@ function EditExpenseModal({
   const [amount, setAmount] = useState(expense ? String(expense.amount) : '')
   const [date, setDate] = useState(expense?.purchase_date || todayIso())
   const [categoryId, setCategoryId] = useState<number | ''>(expense?.category_id || '')
+  const toast = useToast()
 
   useEffect(() => {
     if (expense) {
@@ -2195,7 +2211,10 @@ function EditExpenseModal({
       purchase_date: date,
       category_id: categoryId ? Number(categoryId) : null,
     }),
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success('Gasto atualizado.')
+      onSaved()
+    },
   })
 
   if (!expense) return null
@@ -2386,6 +2405,7 @@ function PdfImportModal({
   const [file, setFile] = useState<File | null>(null)
   const [items, setItems] = useState<ReviewItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
   const parse = useMutation({
     mutationFn: () => importCreditCardPdf(cardId, file!),
@@ -2416,7 +2436,11 @@ function PdfImportModal({
         })),
       })
     },
-    onSuccess: onDone,
+    onSuccess: () => {
+      const n = (items || []).filter((it) => it.accepted).length
+      toast.success(`${n} gasto(s) importado(s).`)
+      onDone()
+    },
   })
 
   const acceptedItems = (items || []).filter((it) => it.accepted)

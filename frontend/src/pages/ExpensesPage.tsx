@@ -687,6 +687,7 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
       queryClient.invalidateQueries({ queryKey: ['transactions-grouped'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setSuccess(true)
+      toast.success('Despesa fixa cadastrada.')
     },
     onError: (err) => toast.error(`Erro: ${extractError(err)}`),
   })

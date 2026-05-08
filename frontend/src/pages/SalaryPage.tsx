@@ -183,6 +183,7 @@ export default function SalaryPage() {
       qc.invalidateQueries({ queryKey: ['balance'] })
       qc.invalidateQueries({ queryKey: ['month-expenses'] })
       setShowConfig(false)
+      toast.success('Configurações de salário salvas.')
     },
     onError: (err) => toast.error(`Erro ao salvar configurações: ${extractError(err)}`),
   })
@@ -194,7 +195,10 @@ export default function SalaryPage() {
 
   const createMut = useMutation({
     mutationFn: createMonthlyEntry,
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      invalidateAll()
+      toast.success('Lançamento adicionado.')
+    },
     onError: (err) => toast.error(`Erro ao criar lançamento: ${extractError(err)}`),
   })
 
@@ -204,13 +208,17 @@ export default function SalaryPage() {
     onSuccess: () => {
       invalidateAll()
       setEditing(null)
+      toast.success('Lançamento atualizado.')
     },
     onError: (err) => toast.error(`Erro ao atualizar lançamento: ${extractError(err)}`),
   })
 
   const deleteMut = useMutation({
     mutationFn: deleteMonthlyEntry,
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      invalidateAll()
+      toast.success('Lançamento excluído.')
+    },
     onError: (err) => toast.error(`Erro ao excluir lançamento: ${extractError(err)}`),
   })
 

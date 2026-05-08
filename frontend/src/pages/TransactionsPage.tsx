@@ -175,6 +175,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setShowForm(false)
+      toast.success('Transação criada com sucesso.')
     },
     onError: (err) => toast.error(`Erro ao criar transação: ${extractError(err)}`),
   })
@@ -187,6 +188,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setEditingId(null)
       setShowForm(false)
+      toast.success('Transação atualizada.')
     },
     onError: (err) => toast.error(`Erro ao atualizar transação: ${extractError(err)}`),
   })
@@ -196,6 +198,7 @@ export default function TransactionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
+      toast.success('Transação excluída.')
     },
     onError: (err) => toast.error(`Erro ao excluir: ${extractError(err)}`),
   })
@@ -208,6 +211,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
       queryClient.invalidateQueries({ queryKey: ['transactions-grouped'] })
       setShowForm(false)
+      toast.success('Gasto fixo cadastrado.')
     },
     onError: (err) => toast.error(`Erro ao cadastrar gasto fixo: ${extractError(err)}`),
   })
@@ -219,6 +223,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       queryClient.invalidateQueries({ queryKey: ['installments'] })
       setShowForm(false)
+      toast.success('Parcelamento cadastrado.')
     },
     onError: (err) => toast.error(`Erro ao cadastrar parcelamento: ${extractError(err)}`),
   })
@@ -811,6 +816,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       setConfirmResult(result)
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
+      toast.success(`${result.created} transação(ões) importada(s).`)
     },
     onError: (err) => toast.error(`Erro ao confirmar: ${extractError(err)}`),
   })
@@ -1003,6 +1009,7 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
       setResult(res)
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
+      toast.success(`${res.created} transação(ões) importada(s).`)
     },
     onError: (err) => toast.error(`Erro na importação: ${extractError(err)}`),
   })
