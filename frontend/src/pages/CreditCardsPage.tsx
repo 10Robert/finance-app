@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getCreditCards,
@@ -31,6 +31,7 @@ import type {
 } from '../types'
 import { useToast, useConfirm } from '../components/feedback'
 import { extractError } from '../utils/errors'
+import { useFocusTrap, useEscapeKey } from '../utils/a11y'
 
 const PT_MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -2097,9 +2098,10 @@ function IconBtn({ icon, title, onClick }: { icon: string; title: string; onClic
     <button
       onClick={onClick}
       title={title}
-      className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+      aria-label={title}
+      className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
-      <span className="material-symbols-outlined text-base">{icon}</span>
+      <span className="material-symbols-outlined text-base" aria-hidden="true">{icon}</span>
     </button>
   )
 }
@@ -2313,13 +2315,21 @@ function Modal({
 }) {
   const widthCls =
     width === 'xl' ? 'max-w-4xl' : width === 'lg' ? 'max-w-2xl' : 'max-w-md'
+  const internalRef = useRef<HTMLDivElement>(null)
+  const ref = (panelRef as React.RefObject<HTMLDivElement>) ?? internalRef
+  const titleId = useId()
+  useFocusTrap(true, ref)
+  useEscapeKey(true, onClose)
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        ref={panelRef}
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={`${widthCls} w-full bg-surface-container border border-outline-variant rounded-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto ${panelClassName}`}
         style={panelStyle}
         onClick={(e) => e.stopPropagation()}
@@ -2329,12 +2339,13 @@ function Modal({
         onPointerCancel={onPanelPointerUp}
       >
         <header className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-on-surface">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold text-on-surface">{title}</h2>
           <button
             onClick={onClose}
-            className="text-on-surface-variant hover:text-on-surface"
+            aria-label="Fechar"
+            className="text-on-surface-variant hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary rounded"
           >
-            <span className="material-symbols-outlined">close</span>
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </header>
         {children}

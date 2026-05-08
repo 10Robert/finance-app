@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getSalaryConfig,
@@ -14,6 +14,7 @@ import {
 import type { MonthlyEntry, MonthlyEntryType } from '../types'
 import { useToast, useConfirm } from '../components/feedback'
 import { extractError } from '../utils/errors'
+import { useFocusTrap, useEscapeKey } from '../utils/a11y'
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -80,6 +81,14 @@ export default function SalaryPage() {
   const [editValue, setEditValue] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [editMultiplier, setEditMultiplier] = useState(0.3)
+
+  // a11y refs for inline modals
+  const configPanelRef = useRef<HTMLDivElement>(null)
+  const editPanelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(showConfig, configPanelRef)
+  useEscapeKey(showConfig, () => setShowConfig(false))
+  useFocusTrap(!!editing, editPanelRef)
+  useEscapeKey(!!editing, () => setEditing(null))
 
   const { data: config } = useQuery({
     queryKey: ['salary-config', selectedMonth, selectedYear],
@@ -346,7 +355,7 @@ export default function SalaryPage() {
   )
 
   const inputClass =
-    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-2.5 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa] focus:border-transparent placeholder:text-[#52525b]'
+    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-2.5 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa] focus:border-transparent placeholder:text-[#71717a]'
 
   const cardClass = 'bg-[#0c0c0f] border border-[#27272a] rounded-lg p-6 flex flex-col'
 
@@ -397,7 +406,7 @@ export default function SalaryPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
           </div>
           <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
-          <p className="text-xs text-[#52525b] mt-1">Acumulado até o mês</p>
+          <p className="text-xs text-[#71717a] mt-1">Acumulado até o mês</p>
         </div>
         <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -405,7 +414,7 @@ export default function SalaryPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Salário Líquido</p>
           </div>
           <p className="text-2xl font-black text-[#a78bfa]">{fmt(netSalary)}</p>
-          <p className="text-xs text-[#52525b] mt-1">{MONTHS[selectedMonth - 1]}/{selectedYear}</p>
+          <p className="text-xs text-[#71717a] mt-1">{MONTHS[selectedMonth - 1]}/{selectedYear}</p>
         </div>
         <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -413,7 +422,7 @@ export default function SalaryPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesa Mensal</p>
           </div>
           <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseTotal)}</p>
-          <p className="text-xs text-[#52525b] mt-1">{monthExpenses?.items.length ?? 0} lançamentos</p>
+          <p className="text-xs text-[#71717a] mt-1">{monthExpenses?.items.length ?? 0} lançamentos</p>
         </div>
         <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
@@ -427,7 +436,7 @@ export default function SalaryPage() {
           <p className={`text-2xl font-black ${monthlyResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
             {fmt(monthlyResult)}
           </p>
-          <p className="text-xs text-[#52525b] mt-1">Líquido − Despesas</p>
+          <p className="text-xs text-[#71717a] mt-1">Líquido − Despesas</p>
         </div>
       </section>
 
@@ -578,7 +587,7 @@ export default function SalaryPage() {
                     className={inputClass}
                   />
                 </div>
-                <p className="text-[10px] text-[#52525b] italic">
+                <p className="text-[10px] text-[#71717a] italic">
                   Atestado médico não gera desconto de salário (empregador paga).
                 </p>
               </div>
@@ -674,7 +683,7 @@ export default function SalaryPage() {
                       <span className="text-sm text-[#a1a1aa] flex items-center gap-1.5">
                         DSR sobre HE
                         <span
-                          className="material-symbols-outlined text-[#52525b] text-[14px]"
+                          className="material-symbols-outlined text-[#71717a] text-[14px]"
                           title="Descanso Semanal Remunerado proporcional às horas extras (Súmula 172 TST). Calculado sobre domingos do mês."
                         >
                           info
@@ -729,7 +738,7 @@ export default function SalaryPage() {
                         <span className="material-symbols-outlined text-[#34d399] text-sm">medical_services</span>
                         Atestado Médico ({summary.medical_certificate_days}d)
                       </span>
-                      <span className="text-xs italic text-[#52525b]">sem desconto</span>
+                      <span className="text-xs italic text-[#71717a]">sem desconto</span>
                     </div>
                   )}
                 </div>
@@ -756,7 +765,7 @@ export default function SalaryPage() {
                       <p className="text-sm font-bold text-[#fafafa]">{fmt(fgtsMonthlyDeposit)}</p>
                     </div>
                   </div>
-                  <p className="text-[10px] text-[#52525b] text-center italic">
+                  <p className="text-[10px] text-[#71717a] text-center italic">
                     informativo — não conta como receita
                   </p>
                 </div>
@@ -848,15 +857,22 @@ export default function SalaryPage() {
       {/* Settings Modal */}
       {showConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowConfig(false)}>
-          <div className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={configPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="salary-config-title"
+            className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-bold text-[#fafafa]">Configurações de Rendimentos</h3>
+                <h3 id="salary-config-title" className="text-lg font-bold text-[#fafafa]">Configurações de Rendimentos</h3>
                 <p className="text-xs text-[#a78bfa] mt-0.5">
                   Referente a {MONTHS[selectedMonth - 1]}/{selectedYear}
                 </p>
               </div>
-              <button onClick={() => setShowConfig(false)} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
+              <button onClick={() => setShowConfig(false)} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
             </div>
 
             <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/20 rounded-lg px-3 py-2">
@@ -899,7 +915,7 @@ export default function SalaryPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgCoparticipation} onChange={(e) => setCfgCoparticipation(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
-                <p className="text-[10px] text-[#52525b] mt-1 italic">
+                <p className="text-[10px] text-[#71717a] mt-1 italic">
                   Valor variável cobrado mensalmente conforme uso do plano.
                 </p>
               </div>
@@ -963,10 +979,17 @@ export default function SalaryPage() {
       {/* Edit Entry Modal */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setEditing(null)}>
-          <div className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={editPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-entry-title"
+            className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-[#fafafa]">Editar {ENTRY_BADGE[editing.entry_type].label}</h3>
-              <button onClick={() => setEditing(null)} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
+              <h3 id="edit-entry-title" className="text-lg font-bold text-[#fafafa]">Editar {ENTRY_BADGE[editing.entry_type].label}</h3>
+              <button onClick={() => setEditing(null)} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
             </div>
             <div className="space-y-3">
               <div>

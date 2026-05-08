@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getExpensesChart,
@@ -11,6 +11,7 @@ import {
 import type { Transaction, SpendingByCategory, FixedExpenseCreate } from '../types'
 import { useToast } from '../components/feedback'
 import { extractError } from '../utils/errors'
+import { useFocusTrap, useEscapeKey } from '../utils/a11y'
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 
@@ -568,22 +569,29 @@ function TransactionListModal({
   onClose: () => void
   onMakeFixed?: (tx: Transaction) => void
 }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tx-list-modal-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center shrink-0">
-          <h3 className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]">{icon}</span>
+          <h3 id="tx-list-modal-title" className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#a78bfa]" aria-hidden="true">{icon}</span>
             {title}
             <span className="text-sm font-normal text-[#a1a1aa]">({transactions.length})</span>
           </h3>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
             close
           </button>
         </div>
@@ -618,6 +626,9 @@ function CategoryDrillModal({
   dateRange: { start_date: string; end_date: string }
   onClose: () => void
 }) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   const { data: transactions, isLoading } = useQuery({
     queryKey: ['category-transactions', categoryName, dateRange],
     queryFn: () =>
@@ -635,15 +646,19 @@ function CategoryDrillModal({
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="category-drill-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center shrink-0">
-          <h3 className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]">category</span>
+          <h3 id="category-drill-title" className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#a78bfa]" aria-hidden="true">category</span>
             {categoryName}
           </h3>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
             close
           </button>
         </div>
@@ -670,6 +685,9 @@ function CategoryDrillModal({
 function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   const txDay = new Date(tx.date + 'T00:00:00').getDate()
   const now = new Date()
 
@@ -716,15 +734,19 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="make-fixed-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
-          <h3 className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#3b82f6]">repeat</span>
+          <h3 id="make-fixed-title" className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
+            <span className="material-symbols-outlined text-[#3b82f6]" aria-hidden="true">repeat</span>
             Tornar Gasto Fixo
           </h3>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
             close
           </button>
         </div>

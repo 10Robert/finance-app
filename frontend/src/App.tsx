@@ -42,13 +42,14 @@ export default function App() {
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="text-on-surface-variant hover:text-on-surface transition-colors"
+              className="text-on-surface-variant hover:text-on-surface transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary rounded"
               title="Ocultar menu"
+              aria-label="Ocultar menu lateral"
             >
-              <span className="material-symbols-outlined text-xl">menu_open</span>
+              <span className="material-symbols-outlined text-xl" aria-hidden="true">menu_open</span>
             </button>
           </div>
-          <nav className="flex-1 space-y-1">
+          <nav aria-label="Menu principal" className="flex-1 space-y-1">
             {navItems.map((item) => {
               const isActive =
                 item.to === '/'
@@ -64,7 +65,7 @@ export default function App() {
                       : 'text-on-surface-variant hover:bg-[#18181b] hover:text-on-surface'
                   }`}
                 >
-                  <span className="material-symbols-outlined">{item.icon}</span>
+                  <span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span>
                   <span className="text-sm font-medium">{item.label}</span>
                 </NavLink>
               )
@@ -81,10 +82,11 @@ export default function App() {
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
-            className="fixed top-4 left-4 z-50 text-on-surface-variant hover:text-on-surface transition-colors bg-[#09090b] border border-[#27272a] rounded-lg p-2"
+            className="fixed top-4 left-4 z-50 text-on-surface-variant hover:text-on-surface transition-colors bg-[#09090b] border border-[#27272a] rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
             title="Exibir menu"
+            aria-label="Exibir menu lateral"
           >
-            <span className="material-symbols-outlined text-xl">menu</span>
+            <span className="material-symbols-outlined text-xl" aria-hidden="true">menu</span>
           </button>
         )}
         <main className="p-8 max-w-7xl mx-auto w-full space-y-8 flex-1">

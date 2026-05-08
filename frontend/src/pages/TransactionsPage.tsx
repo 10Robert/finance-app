@@ -21,6 +21,7 @@ import TransactionForm, { type TransactionFormSubmit } from '../components/Trans
 import ImportReview from '../components/ImportReview'
 import { useToast, useConfirm } from '../components/feedback'
 import { extractError } from '../utils/errors'
+import { useFocusTrap, useEscapeKey } from '../utils/a11y'
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -389,7 +390,7 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
           </div>
           <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
-          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -397,7 +398,7 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Receitas</p>
           </div>
           <p className="text-2xl font-black text-[#34d399]">{fmt(incomeMonth)}</p>
-          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -405,7 +406,7 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesas</p>
           </div>
           <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseMonth)}</p>
-          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -425,7 +426,7 @@ export default function TransactionsPage() {
           >
             {fmt(monthResult)}
           </p>
-          <p className="text-xs text-[#52525b] mt-1">Receitas − Despesas</p>
+          <p className="text-xs text-[#71717a] mt-1">Receitas − Despesas</p>
         </div>
       </section>
 
@@ -542,7 +543,7 @@ export default function TransactionsPage() {
         )}
 
         {periodMode !== 'all' && startDate && endDate && (
-          <span className="text-[10px] uppercase tracking-widest text-[#52525b] hidden lg:inline">
+          <span className="text-[10px] uppercase tracking-widest text-[#71717a] hidden lg:inline">
             {fmtDate(startDate)} → {fmtDate(endDate)}
           </span>
         )}
@@ -718,7 +719,7 @@ function TransactionRow({
             {tx.category.icon} {tx.category.name}
           </span>
         ) : (
-          <span className="text-xs text-[#52525b]">—</span>
+          <span className="text-xs text-[#71717a]">—</span>
         )}
       </td>
       <td
@@ -734,7 +735,7 @@ function TransactionRow({
           {isAuto || isFixed || isInstallment ? (
             <span
               title="Transação automática — gerencie pelo cadastro original"
-              className="text-[#52525b] cursor-not-allowed"
+              className="text-[#71717a] cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-lg">lock</span>
             </span>
@@ -767,6 +768,9 @@ function TransactionRow({
 function ImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   const [activeImportId, setActiveImportId] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [confirmResult, setConfirmResult] = useState<{ created: number; skipped_income: number } | null>(null)
@@ -848,18 +852,23 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-modal-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-[#fafafa]">Importar Extrato Bancário</h3>
+            <h3 id="import-modal-title" className="text-lg font-bold text-[#fafafa]">Importar Extrato Bancário</h3>
             <p className="text-xs text-[#a1a1aa]">
               Receitas (salário, reembolsos) são ignoradas — use a tela de Rendimentos para isso.
             </p>
           </div>
           <button
             onClick={onClose}
+            aria-label="Fechar"
             className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]"
           >
             close
@@ -998,6 +1007,9 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   const [jsonData, setJsonData] = useState<Record<string, unknown>[] | null>(null)
   const [fileName, setFileName] = useState('')
   const [error, setError] = useState('')
@@ -1044,17 +1056,21 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="json-import-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-[#fafafa]">Importar JSON</h3>
+            <h3 id="json-import-title" className="text-lg font-bold text-[#fafafa]">Importar JSON</h3>
             <p className="text-xs text-[#a1a1aa]">
               Formato esperado: array com objetos contendo date, description, amount, type (optional).
             </p>
           </div>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
             close
           </button>
         </div>
@@ -1107,7 +1123,7 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
                       </tbody>
                     </table>
                     {jsonData.length > 50 && (
-                      <p className="text-center text-xs text-[#52525b] py-2">
+                      <p className="text-center text-xs text-[#71717a] py-2">
                         …e mais {jsonData.length - 50} linhas
                       </p>
                     )}
