@@ -19,6 +19,8 @@ import {
 import type { TransactionCreate, Transaction } from '../types'
 import TransactionForm, { type TransactionFormSubmit } from '../components/TransactionForm'
 import ImportReview from '../components/ImportReview'
+import { useToast, useConfirm } from '../components/feedback'
+import { extractError } from '../utils/errors'
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -29,14 +31,6 @@ const fmtDate = (iso: string) =>
     month: 'short',
     year: 'numeric',
   })
-
-const extractError = (err: unknown): string => {
-  const e = err as { response?: { data?: { detail?: unknown } }; message?: string }
-  const detail = e?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d?.msg ?? '').join('; ')
-  return e?.message ?? 'Erro desconhecido'
-}
 
 type TypeFilter = '' | 'expense' | 'income'
 type PeriodMode = 'all' | 'week' | 'month' | 'year' | 'custom'
@@ -89,6 +83,8 @@ function currentIsoWeek(): string {
 
 export default function TransactionsPage() {
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
   const now = new Date()
 
   const [page, setPage] = useState(1)
@@ -180,7 +176,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setShowForm(false)
     },
-    onError: (err) => alert(`Erro ao criar transação: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao criar transação: ${extractError(err)}`),
   })
 
   const updateMut = useMutation({
@@ -192,7 +188,7 @@ export default function TransactionsPage() {
       setEditingId(null)
       setShowForm(false)
     },
-    onError: (err) => alert(`Erro ao atualizar transação: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao atualizar transação: ${extractError(err)}`),
   })
 
   const deleteMut = useMutation({
@@ -201,7 +197,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
     },
-    onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao excluir: ${extractError(err)}`),
   })
 
   const createFixedMut = useMutation({
@@ -213,7 +209,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['transactions-grouped'] })
       setShowForm(false)
     },
-    onError: (err) => alert(`Erro ao cadastrar gasto fixo: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao cadastrar gasto fixo: ${extractError(err)}`),
   })
 
   const createInstallmentMut = useMutation({
@@ -224,7 +220,7 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['installments'] })
       setShowForm(false)
     },
-    onError: (err) => alert(`Erro ao cadastrar parcelamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao cadastrar parcelamento: ${extractError(err)}`),
   })
 
   const handleSubmit = (payload: TransactionFormSubmit) => {
@@ -240,8 +236,14 @@ export default function TransactionsPage() {
     else createInstallmentMut.mutate(payload.data)
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm('Tem certeza que deseja excluir esta transação?')) deleteMut.mutate(id)
+  const handleDelete = async (id: number) => {
+    const ok = await confirm({
+      title: 'Excluir transação',
+      message: 'Tem certeza que deseja excluir esta transação? Essa ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    })
+    if (ok) deleteMut.mutate(id)
   }
 
   const editingTransaction = editingId ? data?.items.find((t) => t.id === editingId) : undefined
@@ -265,7 +267,7 @@ export default function TransactionsPage() {
 
   const exportCSV = () => {
     if (!data?.items.length) {
-      alert('Nada para exportar.')
+      toast.warning('Nada para exportar.')
       return
     }
     const header = ['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor']
@@ -759,6 +761,7 @@ function TransactionRow({
 
 function ImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [activeImportId, setActiveImportId] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [confirmResult, setConfirmResult] = useState<{ created: number; skipped_income: number } | null>(null)
@@ -790,7 +793,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       setActiveImportId(data.id)
       queryClient.invalidateQueries({ queryKey: ['import-status', data.id] })
     },
-    onError: (err) => alert(`Erro no upload: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro no upload: ${extractError(err)}`),
   })
 
   const processMut = useMutation({
@@ -799,7 +802,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['import-status', activeImportId] })
       queryClient.invalidateQueries({ queryKey: ['staged', activeImportId] })
     },
-    onError: (err) => alert(`Erro no processamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro no processamento: ${extractError(err)}`),
   })
 
   const confirmMut = useMutation({
@@ -809,7 +812,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
     },
-    onError: (err) => alert(`Erro ao confirmar: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao confirmar: ${extractError(err)}`),
   })
 
   const handleFiles = (files: FileList | null) => {
@@ -987,6 +990,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
 function JsonImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [jsonData, setJsonData] = useState<Record<string, unknown>[] | null>(null)
   const [fileName, setFileName] = useState('')
@@ -1000,7 +1004,7 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
     },
-    onError: (err) => alert(`Erro na importação: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro na importação: ${extractError(err)}`),
   })
 
   const handleFile = (files: FileList | null) => {

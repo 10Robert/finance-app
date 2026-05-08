@@ -12,6 +12,8 @@ import {
   getTransactions,
 } from '../api/client'
 import type { MonthlyEntry, MonthlyEntryType } from '../types'
+import { useToast, useConfirm } from '../components/feedback'
+import { extractError } from '../utils/errors'
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -42,16 +44,10 @@ const ENTRY_BADGE: Record<MonthlyEntryType, { label: string; color: string; icon
   medical_certificate: { label: 'Atestado', color: 'tertiary', icon: 'medical_services' },
 }
 
-const extractError = (err: unknown): string => {
-  const e = err as { response?: { data?: { detail?: unknown } }; message?: string }
-  const detail = e?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d?.msg ?? '').join('; ')
-  return e?.message ?? 'Erro desconhecido'
-}
-
 export default function SalaryPage() {
   const qc = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
   const now = new Date()
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
@@ -188,7 +184,7 @@ export default function SalaryPage() {
       qc.invalidateQueries({ queryKey: ['month-expenses'] })
       setShowConfig(false)
     },
-    onError: (err) => alert(`Erro ao salvar configurações: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao salvar configurações: ${extractError(err)}`),
   })
 
   const invalidateAll = () => {
@@ -199,7 +195,7 @@ export default function SalaryPage() {
   const createMut = useMutation({
     mutationFn: createMonthlyEntry,
     onSuccess: invalidateAll,
-    onError: (err) => alert(`Erro ao criar lançamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao criar lançamento: ${extractError(err)}`),
   })
 
   const updateMut = useMutation({
@@ -209,19 +205,22 @@ export default function SalaryPage() {
       invalidateAll()
       setEditing(null)
     },
-    onError: (err) => alert(`Erro ao atualizar lançamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao atualizar lançamento: ${extractError(err)}`),
   })
 
   const deleteMut = useMutation({
     mutationFn: deleteMonthlyEntry,
     onSuccess: invalidateAll,
-    onError: (err) => alert(`Erro ao excluir lançamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao excluir lançamento: ${extractError(err)}`),
   })
 
   // Submit handlers
   const launchOvertime = () => {
     const h = parseFloat(overtimeHours)
-    if (!h || h <= 0) return alert('Informe a quantidade de horas extras.')
+    if (!h || h <= 0) {
+      toast.warning('Informe a quantidade de horas extras.')
+      return
+    }
     createMut.mutate({
       reference_month: selectedMonth,
       reference_year: selectedYear,
@@ -239,7 +238,10 @@ export default function SalaryPage() {
     const ad = parseInt(absenceDays, 10)
     const hasLate = !isNaN(lh) && lh > 0
     const hasAbsence = !isNaN(ad) && ad > 0
-    if (!hasLate && !hasAbsence) return alert('Informe horas de atraso ou quantidade de faltas.')
+    if (!hasLate && !hasAbsence) {
+      toast.warning('Informe horas de atraso ou quantidade de faltas.')
+      return
+    }
     if (hasLate) {
       createMut.mutate({
         reference_month: selectedMonth,
@@ -265,7 +267,10 @@ export default function SalaryPage() {
 
   const launchRefund = () => {
     const v = parseFloat(refundAmount)
-    if (!v || v <= 0) return alert('Informe o valor do reembolso.')
+    if (!v || v <= 0) {
+      toast.warning('Informe o valor do reembolso.')
+      return
+    }
     createMut.mutate({
       reference_month: selectedMonth,
       reference_year: selectedYear,
@@ -279,7 +284,10 @@ export default function SalaryPage() {
 
   const launchMedical = () => {
     const d = parseInt(medicalDays, 10)
-    if (!d || d <= 0) return alert('Informe a quantidade de dias de atestado.')
+    if (!d || d <= 0) {
+      toast.warning('Informe a quantidade de dias de atestado.')
+      return
+    }
     createMut.mutate({
       reference_month: selectedMonth,
       reference_year: selectedYear,
@@ -313,8 +321,14 @@ export default function SalaryPage() {
     updateMut.mutate({ id: editing.id, data })
   }
 
-  const confirmDelete = (id: number) => {
-    if (confirm('Tem certeza que deseja excluir este lançamento?')) deleteMut.mutate(id)
+  const confirmDelete = async (id: number) => {
+    const ok = await confirm({
+      title: 'Excluir lançamento',
+      message: 'Tem certeza que deseja excluir este lançamento?',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    })
+    if (ok) deleteMut.mutate(id)
   }
 
   // Computed - count entry totals from entries list (for the small "+12h" label, etc.)

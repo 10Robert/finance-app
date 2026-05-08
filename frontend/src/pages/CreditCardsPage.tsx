@@ -29,6 +29,8 @@ import type {
   CreditCardDailySpend,
   Category as CategoryType,
 } from '../types'
+import { useToast, useConfirm } from '../components/feedback'
+import { extractError } from '../utils/errors'
 
 const PT_MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -75,6 +77,8 @@ const todayIso = () => {
 
 export default function CreditCardsPage() {
   const qc = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
@@ -448,13 +452,25 @@ export default function CreditCardsPage() {
                     {isSub ? '/mês' : ''}
                   </span>
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation()
                       const msg = isSub
                         ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
                         : 'Remover este lançamento?'
-                      if (confirm(msg))
-                        deleteCreditCardExpense(item.expense_id).then(invalidateAll)
+                      const ok = await confirm({
+                        title: isSub ? 'Remover assinatura' : 'Remover lançamento',
+                        message: msg,
+                        confirmLabel: 'Remover',
+                        tone: 'danger',
+                      })
+                      if (ok) {
+                        try {
+                          await deleteCreditCardExpense(item.expense_id)
+                          invalidateAll()
+                        } catch (err) {
+                          toast.error(`Erro ao remover: ${extractError(err)}`)
+                        }
+                      }
                     }}
                     className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-surface-container-high"
                     title="Remover"
@@ -536,16 +552,26 @@ export default function CreditCardsPage() {
           item={txDetailOpen}
           onClose={() => setTxDetailOpen(null)}
           onEdit={() => { setEditExpenseOpen(txDetailOpen); setTxDetailOpen(null) }}
-          onDelete={() => {
+          onDelete={async () => {
             const isSub = txDetailOpen.is_subscription
             const msg = isSub
               ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
               : 'Remover este lançamento?'
-            if (confirm(msg))
-              deleteCreditCardExpense(txDetailOpen.expense_id).then(() => {
+            const ok = await confirm({
+              title: isSub ? 'Remover assinatura' : 'Remover lançamento',
+              message: msg,
+              confirmLabel: 'Remover',
+              tone: 'danger',
+            })
+            if (ok) {
+              try {
+                await deleteCreditCardExpense(txDetailOpen.expense_id)
                 setTxDetailOpen(null)
                 invalidateAll()
-              })
+              } catch (err) {
+                toast.error(`Erro ao remover: ${extractError(err)}`)
+              }
+            }
           }}
         />
       )}
@@ -1770,6 +1796,7 @@ function CardFormModal({
   onSaved: () => void
   onDeleted: () => void
 }) {
+  const confirm = useConfirm()
   const [name, setName] = useState(card?.name || '')
   const [brand, setBrand] = useState(card?.brand || '')
   const [color, setColor] = useState(card?.color || CARD_COLORS[0])
@@ -1877,9 +1904,14 @@ function CardFormModal({
         <div className="flex justify-between gap-2 pt-2">
           {card ? (
             <button
-              onClick={() => {
-                if (confirm('Excluir este cartão removerá todos os seus gastos. Continuar?'))
-                  remove.mutate()
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Excluir cartão',
+                  message: 'Excluir este cartão removerá todos os seus gastos. Continuar?',
+                  confirmLabel: 'Excluir',
+                  tone: 'danger',
+                })
+                if (ok) remove.mutate()
               }}
               className="px-4 py-2 rounded-lg border border-error text-error hover:bg-error/10"
             >
@@ -1915,6 +1947,7 @@ function BillModal({
   year: number; month: number; onClose: () => void; onChanged: () => void
 }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data: items = [] } = useQuery({
     queryKey: ['cc-bill', year, month],
     queryFn: () => getCreditCardBill(year, month),
@@ -2013,9 +2046,14 @@ function BillModal({
                 <IconBtn
                   icon="delete"
                   title="Excluir gasto"
-                  onClick={() => {
-                    if (confirm('Excluir este gasto removerá todas as parcelas. Continuar?'))
-                      deleteCreditCardExpense(item.expense_id).then(refresh)
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Excluir gasto',
+                      message: 'Excluir este gasto removerá todas as parcelas. Continuar?',
+                      confirmLabel: 'Excluir',
+                      tone: 'danger',
+                    })
+                    if (ok) deleteCreditCardExpense(item.expense_id).then(refresh)
                   }}
                 />
               </div>

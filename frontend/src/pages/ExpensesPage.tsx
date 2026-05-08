@@ -9,6 +9,8 @@ import {
   getBalance,
 } from '../api/client'
 import type { Transaction, SpendingByCategory, FixedExpenseCreate } from '../types'
+import { useToast } from '../components/feedback'
+import { extractError } from '../utils/errors'
 
 /* ─── helpers ─────────────────────────────────────────────────────────── */
 
@@ -667,6 +669,7 @@ function CategoryDrillModal({
 
 function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const txDay = new Date(tx.date + 'T00:00:00').getDate()
   const now = new Date()
 
@@ -685,10 +688,7 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setSuccess(true)
     },
-    onError: (err) => {
-      const e = err as { response?: { data?: { detail?: string } }; message?: string }
-      alert(`Erro: ${e?.response?.data?.detail || e?.message || 'Erro desconhecido'}`)
-    },
+    onError: (err) => toast.error(`Erro: ${extractError(err)}`),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
