@@ -372,6 +372,8 @@ export default function SalaryPage() {
             </select>
             <input
               type="number"
+              min="2000"
+              max="2100"
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
               className="bg-transparent outline-none text-sm font-medium text-[#fafafa] w-16"
@@ -448,6 +450,7 @@ export default function SalaryPage() {
                   <input
                     type="number"
                     step="0.5"
+                    min="0"
                     value={overtimeHours}
                     onChange={(e) => setOvertimeHours(e.target.value)}
                     placeholder="0.00"
@@ -507,6 +510,7 @@ export default function SalaryPage() {
                   <input
                     type="number"
                     step="0.5"
+                    min="0"
                     value={lateHours}
                     onChange={(e) => setLateHours(e.target.value)}
                     placeholder="0.00"
@@ -517,6 +521,7 @@ export default function SalaryPage() {
                   <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Quantidade de Faltas (dias)</label>
                   <input
                     type="number"
+                    min="0"
                     value={absenceDays}
                     onChange={(e) => setAbsenceDays(e.target.value)}
                     placeholder="0"
@@ -556,6 +561,7 @@ export default function SalaryPage() {
                   <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Dias de Atestado</label>
                   <input
                     type="number"
+                    min="0"
                     value={medicalDays}
                     onChange={(e) => setMedicalDays(e.target.value)}
                     placeholder="0"
@@ -601,6 +607,7 @@ export default function SalaryPage() {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
                       value={refundAmount}
                       onChange={(e) => setRefundAmount(e.target.value)}
                       placeholder="0,00"
@@ -866,7 +873,7 @@ export default function SalaryPage() {
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Salário Bruto (referência)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
-                  <input type="number" step="0.01" value={cfgBaseSalary} onChange={(e) => setCfgBaseSalary(e.target.value)} className={`${inputClass} pl-10`} />
+                  <input type="number" step="0.01" min="0" value={cfgBaseSalary} onChange={(e) => setCfgBaseSalary(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
@@ -874,7 +881,7 @@ export default function SalaryPage() {
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Vale Refeição / Alimentação</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
-                  <input type="number" step="0.01" value={cfgMealAllowance} onChange={(e) => setCfgMealAllowance(e.target.value)} className={`${inputClass} pl-10`} />
+                  <input type="number" step="0.01" min="0" value={cfgMealAllowance} onChange={(e) => setCfgMealAllowance(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
@@ -882,7 +889,7 @@ export default function SalaryPage() {
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Plano de Saúde (mensalidade)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
-                  <input type="number" step="0.01" value={cfgHealthPlan} onChange={(e) => setCfgHealthPlan(e.target.value)} className={`${inputClass} pl-10`} />
+                  <input type="number" step="0.01" min="0" value={cfgHealthPlan} onChange={(e) => setCfgHealthPlan(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
@@ -890,7 +897,7 @@ export default function SalaryPage() {
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Coparticipação Plano de Saúde</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
-                  <input type="number" step="0.01" value={cfgCoparticipation} onChange={(e) => setCfgCoparticipation(e.target.value)} className={`${inputClass} pl-10`} />
+                  <input type="number" step="0.01" min="0" value={cfgCoparticipation} onChange={(e) => setCfgCoparticipation(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
                 <p className="text-[10px] text-[#52525b] mt-1 italic">
                   Valor variável cobrado mensalmente conforme uso do plano.
@@ -901,7 +908,7 @@ export default function SalaryPage() {
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Plano Odontológico</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
-                  <input type="number" step="0.01" value={cfgDentalPlan} onChange={(e) => setCfgDentalPlan(e.target.value)} className={`${inputClass} pl-10`} />
+                  <input type="number" step="0.01" min="0" value={cfgDentalPlan} onChange={(e) => setCfgDentalPlan(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
@@ -922,6 +929,8 @@ export default function SalaryPage() {
                   <input
                     type="number"
                     step="0.5"
+                    min="0"
+                    max="100"
                     value={cfgVtPercent}
                     onChange={(e) => setCfgVtPercent(e.target.value)}
                     disabled={!cfgVtEnabled}
@@ -935,7 +944,7 @@ export default function SalaryPage() {
                 <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Saldo FGTS Atual</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
-                  <input type="number" step="0.01" value={cfgFgts} onChange={(e) => setCfgFgts(e.target.value)} className={`${inputClass} pl-10`} />
+                  <input type="number" step="0.01" min="0" value={cfgFgts} onChange={(e) => setCfgFgts(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
             </div>
@@ -971,6 +980,7 @@ export default function SalaryPage() {
                 <input
                   type="number"
                   step={editing.entry_type === 'absence' || editing.entry_type === 'medical_certificate' ? '1' : '0.01'}
+                  min="0"
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   className={inputClass}

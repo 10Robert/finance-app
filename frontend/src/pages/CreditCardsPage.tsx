@@ -2148,6 +2148,8 @@ function AnticipateModal({
           <Field label="Ano">
             <input
               type="number"
+              min="2000"
+              max="2100"
               value={targetYear}
               onChange={(e) => setTargetYear(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
@@ -2269,7 +2271,18 @@ function EditExpenseModal({
             Cancelar
           </button>
           <button
-            onClick={() => save.mutate()}
+            onClick={() => {
+              const amt = Number(amount.replace(',', '.'))
+              if (!description.trim()) {
+                toast.warning('Descrição obrigatória')
+                return
+              }
+              if (!amt || amt <= 0) {
+                toast.warning('Valor inválido')
+                return
+              }
+              save.mutate()
+            }}
             disabled={save.isPending}
             className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
           >
@@ -2570,6 +2583,7 @@ function PdfImportModal({
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={it.amount}
                   onChange={(e) => {
                     const next = [...items]; next[i] = { ...it, amount: Number(e.target.value) }; setItems(next)
