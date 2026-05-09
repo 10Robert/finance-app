@@ -27,6 +27,45 @@
   --color-on-error-container: #fca5a5;
 }
 
+/* Light theme — applied when <html data-theme="light">. Tailwind tokens above
+   come from @theme; here we override the resolved CSS custom props so utilities
+   like bg-bg / text-on-surface flip automatically. */
+html[data-theme='light'] {
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-surface-container: #f4f4f5;
+  --color-surface-container-low: #fafafa;
+  --color-surface-container-high: #e4e4e7;
+  --color-surface-container-highest: #d4d4d8;
+  --color-surface-variant: #e4e4e7;
+  --color-on-surface: #18181b;
+  --color-on-surface-variant: #52525b;
+  --color-outline: #a1a1aa;
+  --color-outline-variant: #d4d4d8;
+  --color-primary: #7c3aed;
+  --color-primary-container: #ede9fe;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #4c1d95;
+  --color-secondary: #52525b;
+  --color-secondary-container: #e4e4e7;
+  --color-on-secondary-container: #3f3f46;
+  --color-tertiary: #059669;
+  --color-tertiary-container: #d1fae5;
+  --color-on-tertiary: #ffffff;
+  --color-error: #dc2626;
+  --color-error-container: #fee2e2;
+  --color-on-error-container: #7f1d1d;
+}
+
+html[data-theme='light'] body {
+  background-color: #fafafa;
+  color: #18181b;
+}
+
+/* Scrollbar adapts to theme */
+html[data-theme='light'] ::-webkit-scrollbar-track { background: #fafafa; }
+html[data-theme='light'] ::-webkit-scrollbar-thumb { background: #d4d4d8; }
+
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;

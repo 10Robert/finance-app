@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { useTheme } from './theme/ThemeContext'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage'))
@@ -30,12 +31,13 @@ const navItems = [
 export default function App() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const { theme, toggle: toggleTheme } = useTheme()
 
   return (
     <div className="flex min-h-screen bg-bg text-on-surface">
       {/* Sidebar */}
       {sidebarOpen && (
-        <aside className="fixed left-0 top-0 h-screen w-64 border-r border-[#27272a] bg-[#09090b] flex flex-col py-6 z-50">
+        <aside className="fixed left-0 top-0 h-screen w-64 border-r border-outline-variant bg-surface flex flex-col py-6 z-50">
           <div className="px-6 mb-10 flex items-center justify-between">
             <div className="w-8 h-8 rounded bg-primary flex items-center justify-center">
               <span className="material-symbols-outlined text-on-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance</span>
@@ -61,8 +63,8 @@ export default function App() {
                   to={item.to}
                   className={`flex items-center gap-3 px-6 py-3 transition-colors duration-200 ${
                     isActive
-                      ? 'text-primary font-bold border-r-2 border-primary bg-[#18181b]'
-                      : 'text-on-surface-variant hover:bg-[#18181b] hover:text-on-surface'
+                      ? 'text-primary font-bold border-r-2 border-primary bg-surface-container-high'
+                      : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
                   }`}
                 >
                   <span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span>
@@ -71,6 +73,19 @@ export default function App() {
               )
             })}
           </nav>
+          <div className="px-6 pt-4 border-t border-outline-variant">
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+              aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
+            >
+              <span className="material-symbols-outlined text-base" aria-hidden="true">
+                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+              </span>
+              <span>{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</span>
+            </button>
+          </div>
         </aside>
       )}
 
@@ -82,7 +97,7 @@ export default function App() {
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
-            className="fixed top-4 left-4 z-50 text-on-surface-variant hover:text-on-surface transition-colors bg-[#09090b] border border-[#27272a] rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+            className="fixed top-4 left-4 z-50 text-on-surface-variant hover:text-on-surface transition-colors bg-surface border border-outline-variant rounded-lg p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
             title="Exibir menu"
             aria-label="Exibir menu lateral"
           >
