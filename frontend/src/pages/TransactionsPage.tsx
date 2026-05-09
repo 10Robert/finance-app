@@ -19,6 +19,9 @@ import {
 import type { TransactionCreate, Transaction } from '../types'
 import TransactionForm, { type TransactionFormSubmit } from '../components/TransactionForm'
 import ImportReview from '../components/ImportReview'
+import { useToast, useConfirm } from '../components/feedback'
+import { extractError } from '../utils/errors'
+import { useFocusTrap, useEscapeKey } from '../utils/a11y'
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -29,14 +32,6 @@ const fmtDate = (iso: string) =>
     month: 'short',
     year: 'numeric',
   })
-
-const extractError = (err: unknown): string => {
-  const e = err as { response?: { data?: { detail?: unknown } }; message?: string }
-  const detail = e?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d?.msg ?? '').join('; ')
-  return e?.message ?? 'Erro desconhecido'
-}
 
 type TypeFilter = '' | 'expense' | 'income'
 type PeriodMode = 'all' | 'week' | 'month' | 'year' | 'custom'
@@ -89,6 +84,8 @@ function currentIsoWeek(): string {
 
 export default function TransactionsPage() {
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
   const now = new Date()
 
   const [page, setPage] = useState(1)
@@ -179,8 +176,9 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setShowForm(false)
+      toast.success('Transação criada com sucesso.')
     },
-    onError: (err) => alert(`Erro ao criar transação: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao criar transação: ${extractError(err)}`),
   })
 
   const updateMut = useMutation({
@@ -191,8 +189,9 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       setEditingId(null)
       setShowForm(false)
+      toast.success('Transação atualizada.')
     },
-    onError: (err) => alert(`Erro ao atualizar transação: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao atualizar transação: ${extractError(err)}`),
   })
 
   const deleteMut = useMutation({
@@ -200,8 +199,9 @@ export default function TransactionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
+      toast.success('Transação excluída.')
     },
-    onError: (err) => alert(`Erro ao excluir: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao excluir: ${extractError(err)}`),
   })
 
   const createFixedMut = useMutation({
@@ -212,8 +212,9 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['fixed-expenses'] })
       queryClient.invalidateQueries({ queryKey: ['transactions-grouped'] })
       setShowForm(false)
+      toast.success('Gasto fixo cadastrado.')
     },
-    onError: (err) => alert(`Erro ao cadastrar gasto fixo: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao cadastrar gasto fixo: ${extractError(err)}`),
   })
 
   const createInstallmentMut = useMutation({
@@ -223,8 +224,9 @@ export default function TransactionsPage() {
       queryClient.invalidateQueries({ queryKey: ['balance'] })
       queryClient.invalidateQueries({ queryKey: ['installments'] })
       setShowForm(false)
+      toast.success('Parcelamento cadastrado.')
     },
-    onError: (err) => alert(`Erro ao cadastrar parcelamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao cadastrar parcelamento: ${extractError(err)}`),
   })
 
   const handleSubmit = (payload: TransactionFormSubmit) => {
@@ -240,8 +242,14 @@ export default function TransactionsPage() {
     else createInstallmentMut.mutate(payload.data)
   }
 
-  const handleDelete = (id: number) => {
-    if (confirm('Tem certeza que deseja excluir esta transação?')) deleteMut.mutate(id)
+  const handleDelete = async (id: number) => {
+    const ok = await confirm({
+      title: 'Excluir transação',
+      message: 'Tem certeza que deseja excluir esta transação? Essa ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    })
+    if (ok) deleteMut.mutate(id)
   }
 
   const editingTransaction = editingId ? data?.items.find((t) => t.id === editingId) : undefined
@@ -265,7 +273,7 @@ export default function TransactionsPage() {
 
   const exportCSV = () => {
     if (!data?.items.length) {
-      alert('Nada para exportar.')
+      toast.warning('Nada para exportar.')
       return
     }
     const header = ['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor']
@@ -382,7 +390,7 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
           </div>
           <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
-          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -390,7 +398,7 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Receitas</p>
           </div>
           <p className="text-2xl font-black text-[#34d399]">{fmt(incomeMonth)}</p>
-          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -398,7 +406,7 @@ export default function TransactionsPage() {
             <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesas</p>
           </div>
           <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseMonth)}</p>
-          <p className="text-xs text-[#52525b] mt-1">{periodLabel}</p>
+          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
@@ -418,7 +426,7 @@ export default function TransactionsPage() {
           >
             {fmt(monthResult)}
           </p>
-          <p className="text-xs text-[#52525b] mt-1">Receitas − Despesas</p>
+          <p className="text-xs text-[#71717a] mt-1">Receitas − Despesas</p>
         </div>
       </section>
 
@@ -535,7 +543,7 @@ export default function TransactionsPage() {
         )}
 
         {periodMode !== 'all' && startDate && endDate && (
-          <span className="text-[10px] uppercase tracking-widest text-[#52525b] hidden lg:inline">
+          <span className="text-[10px] uppercase tracking-widest text-[#71717a] hidden lg:inline">
             {fmtDate(startDate)} → {fmtDate(endDate)}
           </span>
         )}
@@ -711,7 +719,7 @@ function TransactionRow({
             {tx.category.icon} {tx.category.name}
           </span>
         ) : (
-          <span className="text-xs text-[#52525b]">—</span>
+          <span className="text-xs text-[#71717a]">—</span>
         )}
       </td>
       <td
@@ -727,7 +735,7 @@ function TransactionRow({
           {isAuto || isFixed || isInstallment ? (
             <span
               title="Transação automática — gerencie pelo cadastro original"
-              className="text-[#52525b] cursor-not-allowed"
+              className="text-[#71717a] cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-lg">lock</span>
             </span>
@@ -759,6 +767,10 @@ function TransactionRow({
 
 function ImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   const [activeImportId, setActiveImportId] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [confirmResult, setConfirmResult] = useState<{ created: number; skipped_income: number } | null>(null)
@@ -790,7 +802,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       setActiveImportId(data.id)
       queryClient.invalidateQueries({ queryKey: ['import-status', data.id] })
     },
-    onError: (err) => alert(`Erro no upload: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro no upload: ${extractError(err)}`),
   })
 
   const processMut = useMutation({
@@ -799,7 +811,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ['import-status', activeImportId] })
       queryClient.invalidateQueries({ queryKey: ['staged', activeImportId] })
     },
-    onError: (err) => alert(`Erro no processamento: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro no processamento: ${extractError(err)}`),
   })
 
   const confirmMut = useMutation({
@@ -808,8 +820,9 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       setConfirmResult(result)
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
+      toast.success(`${result.created} transação(ões) importada(s).`)
     },
-    onError: (err) => alert(`Erro ao confirmar: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro ao confirmar: ${extractError(err)}`),
   })
 
   const handleFiles = (files: FileList | null) => {
@@ -839,18 +852,23 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-modal-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-[#fafafa]">Importar Extrato Bancário</h3>
+            <h3 id="import-modal-title" className="text-lg font-bold text-[#fafafa]">Importar Extrato Bancário</h3>
             <p className="text-xs text-[#a1a1aa]">
               Receitas (salário, reembolsos) são ignoradas — use a tela de Rendimentos para isso.
             </p>
           </div>
           <button
             onClick={onClose}
+            aria-label="Fechar"
             className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]"
           >
             close
@@ -987,7 +1005,11 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
 function JsonImportModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(true, panelRef)
+  useEscapeKey(true, onClose)
   const [jsonData, setJsonData] = useState<Record<string, unknown>[] | null>(null)
   const [fileName, setFileName] = useState('')
   const [error, setError] = useState('')
@@ -999,8 +1021,9 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
       setResult(res)
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['balance'] })
+      toast.success(`${res.created} transação(ões) importada(s).`)
     },
-    onError: (err) => alert(`Erro na importação: ${extractError(err)}`),
+    onError: (err) => toast.error(`Erro na importação: ${extractError(err)}`),
   })
 
   const handleFile = (files: FileList | null) => {
@@ -1033,17 +1056,21 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="json-import-title"
         className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-[#fafafa]">Importar JSON</h3>
+            <h3 id="json-import-title" className="text-lg font-bold text-[#fafafa]">Importar JSON</h3>
             <p className="text-xs text-[#a1a1aa]">
               Formato esperado: array com objetos contendo date, description, amount, type (optional).
             </p>
           </div>
-          <button onClick={onClose} className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
             close
           </button>
         </div>
@@ -1096,7 +1123,7 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
                       </tbody>
                     </table>
                     {jsonData.length > 50 && (
-                      <p className="text-center text-xs text-[#52525b] py-2">
+                      <p className="text-center text-xs text-[#71717a] py-2">
                         …e mais {jsonData.length - 50} linhas
                       </p>
                     )}

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useId } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getCreditCards,
@@ -29,6 +29,9 @@ import type {
   CreditCardDailySpend,
   Category as CategoryType,
 } from '../types'
+import { useToast, useConfirm } from '../components/feedback'
+import { extractError } from '../utils/errors'
+import { useFocusTrap, useEscapeKey } from '../utils/a11y'
 
 const PT_MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -75,6 +78,8 @@ const todayIso = () => {
 
 export default function CreditCardsPage() {
   const qc = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
@@ -448,13 +453,25 @@ export default function CreditCardsPage() {
                     {isSub ? '/mês' : ''}
                   </span>
                   <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation()
                       const msg = isSub
                         ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
                         : 'Remover este lançamento?'
-                      if (confirm(msg))
-                        deleteCreditCardExpense(item.expense_id).then(invalidateAll)
+                      const ok = await confirm({
+                        title: isSub ? 'Remover assinatura' : 'Remover lançamento',
+                        message: msg,
+                        confirmLabel: 'Remover',
+                        tone: 'danger',
+                      })
+                      if (ok) {
+                        try {
+                          await deleteCreditCardExpense(item.expense_id)
+                          invalidateAll()
+                        } catch (err) {
+                          toast.error(`Erro ao remover: ${extractError(err)}`)
+                        }
+                      }
                     }}
                     className="w-7 h-7 rounded-md flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-surface-container-high"
                     title="Remover"
@@ -536,16 +553,26 @@ export default function CreditCardsPage() {
           item={txDetailOpen}
           onClose={() => setTxDetailOpen(null)}
           onEdit={() => { setEditExpenseOpen(txDetailOpen); setTxDetailOpen(null) }}
-          onDelete={() => {
+          onDelete={async () => {
             const isSub = txDetailOpen.is_subscription
             const msg = isSub
               ? 'Remover esta assinatura? Todas as parcelas futuras serão excluídas.'
               : 'Remover este lançamento?'
-            if (confirm(msg))
-              deleteCreditCardExpense(txDetailOpen.expense_id).then(() => {
+            const ok = await confirm({
+              title: isSub ? 'Remover assinatura' : 'Remover lançamento',
+              message: msg,
+              confirmLabel: 'Remover',
+              tone: 'danger',
+            })
+            if (ok) {
+              try {
+                await deleteCreditCardExpense(txDetailOpen.expense_id)
                 setTxDetailOpen(null)
                 invalidateAll()
-              })
+              } catch (err) {
+                toast.error(`Erro ao remover: ${extractError(err)}`)
+              }
+            }
           }}
         />
       )}
@@ -1217,10 +1244,14 @@ function AddTxModal({
   const [installments, setInstallments] = useState(2)
   const [isSubscription, setIsSubscription] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
   const submit = useMutation({
     mutationFn: createCreditCardExpense,
-    onSuccess: onCreated,
+    onSuccess: () => {
+      toast.success('Gasto lançado.')
+      onCreated()
+    },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setError(e?.response?.data?.detail || 'Erro ao lançar gasto')
     },
@@ -1770,6 +1801,8 @@ function CardFormModal({
   onSaved: () => void
   onDeleted: () => void
 }) {
+  const confirm = useConfirm()
+  const toast = useToast()
   const [name, setName] = useState(card?.name || '')
   const [brand, setBrand] = useState(card?.brand || '')
   const [color, setColor] = useState(card?.color || CARD_COLORS[0])
@@ -1791,7 +1824,10 @@ function CardFormModal({
       if (card) return updateCreditCard(card.id, payload)
       return createCreditCard(payload)
     },
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success(card ? 'Cartão atualizado.' : 'Cartão criado.')
+      onSaved()
+    },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setError(e?.response?.data?.detail || 'Erro ao salvar cartão')
     },
@@ -1799,7 +1835,10 @@ function CardFormModal({
 
   const remove = useMutation({
     mutationFn: () => deleteCreditCard(card!.id),
-    onSuccess: onDeleted,
+    onSuccess: () => {
+      toast.success('Cartão excluído.')
+      onDeleted()
+    },
   })
 
   const handleSubmit = () => {
@@ -1877,9 +1916,14 @@ function CardFormModal({
         <div className="flex justify-between gap-2 pt-2">
           {card ? (
             <button
-              onClick={() => {
-                if (confirm('Excluir este cartão removerá todos os seus gastos. Continuar?'))
-                  remove.mutate()
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Excluir cartão',
+                  message: 'Excluir este cartão removerá todos os seus gastos. Continuar?',
+                  confirmLabel: 'Excluir',
+                  tone: 'danger',
+                })
+                if (ok) remove.mutate()
               }}
               className="px-4 py-2 rounded-lg border border-error text-error hover:bg-error/10"
             >
@@ -1915,6 +1959,7 @@ function BillModal({
   year: number; month: number; onClose: () => void; onChanged: () => void
 }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data: items = [] } = useQuery({
     queryKey: ['cc-bill', year, month],
     queryFn: () => getCreditCardBill(year, month),
@@ -2013,9 +2058,14 @@ function BillModal({
                 <IconBtn
                   icon="delete"
                   title="Excluir gasto"
-                  onClick={() => {
-                    if (confirm('Excluir este gasto removerá todas as parcelas. Continuar?'))
-                      deleteCreditCardExpense(item.expense_id).then(refresh)
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Excluir gasto',
+                      message: 'Excluir este gasto removerá todas as parcelas. Continuar?',
+                      confirmLabel: 'Excluir',
+                      tone: 'danger',
+                    })
+                    if (ok) deleteCreditCardExpense(item.expense_id).then(refresh)
                   }}
                 />
               </div>
@@ -2048,9 +2098,10 @@ function IconBtn({ icon, title, onClick }: { icon: string; title: string; onClic
     <button
       onClick={onClick}
       title={title}
-      className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
+      aria-label={title}
+      className="w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
     >
-      <span className="material-symbols-outlined text-base">{icon}</span>
+      <span className="material-symbols-outlined text-base" aria-hidden="true">{icon}</span>
     </button>
   )
 }
@@ -2065,12 +2116,16 @@ function AnticipateModal({
   const now = new Date()
   const [targetMonth, setTargetMonth] = useState(now.getMonth() + 1)
   const [targetYear, setTargetYear] = useState(now.getFullYear())
+  const toast = useToast()
 
   const submit = useMutation({
     mutationFn: () => anticipateInstallment(item.installment_id, {
       target_month: targetMonth, target_year: targetYear,
     }),
-    onSuccess: onDone,
+    onSuccess: () => {
+      toast.success('Parcela antecipada.')
+      onDone()
+    },
   })
 
   return (
@@ -2095,6 +2150,8 @@ function AnticipateModal({
           <Field label="Ano">
             <input
               type="number"
+              min="2000"
+              max="2100"
               value={targetYear}
               onChange={(e) => setTargetYear(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg bg-bg border border-outline-variant text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
@@ -2140,6 +2197,7 @@ function EditExpenseModal({
   const [amount, setAmount] = useState(expense ? String(expense.amount) : '')
   const [date, setDate] = useState(expense?.purchase_date || todayIso())
   const [categoryId, setCategoryId] = useState<number | ''>(expense?.category_id || '')
+  const toast = useToast()
 
   useEffect(() => {
     if (expense) {
@@ -2157,7 +2215,10 @@ function EditExpenseModal({
       purchase_date: date,
       category_id: categoryId ? Number(categoryId) : null,
     }),
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.success('Gasto atualizado.')
+      onSaved()
+    },
   })
 
   if (!expense) return null
@@ -2212,7 +2273,18 @@ function EditExpenseModal({
             Cancelar
           </button>
           <button
-            onClick={() => save.mutate()}
+            onClick={() => {
+              const amt = Number(amount.replace(',', '.'))
+              if (!description.trim()) {
+                toast.warning('Descrição obrigatória')
+                return
+              }
+              if (!amt || amt <= 0) {
+                toast.warning('Valor inválido')
+                return
+              }
+              save.mutate()
+            }}
             disabled={save.isPending}
             className="px-4 py-2 rounded-lg bg-primary text-on-primary font-medium hover:bg-primary/90 disabled:opacity-50"
           >
@@ -2243,13 +2315,21 @@ function Modal({
 }) {
   const widthCls =
     width === 'xl' ? 'max-w-4xl' : width === 'lg' ? 'max-w-2xl' : 'max-w-md'
+  const internalRef = useRef<HTMLDivElement>(null)
+  const ref = (panelRef as React.RefObject<HTMLDivElement>) ?? internalRef
+  const titleId = useId()
+  useFocusTrap(true, ref)
+  useEscapeKey(true, onClose)
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4"
       onClick={onClose}
     >
       <div
-        ref={panelRef}
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={`${widthCls} w-full bg-surface-container border border-outline-variant rounded-xl p-4 sm:p-6 max-h-[92vh] overflow-y-auto ${panelClassName}`}
         style={panelStyle}
         onClick={(e) => e.stopPropagation()}
@@ -2259,12 +2339,13 @@ function Modal({
         onPointerCancel={onPanelPointerUp}
       >
         <header className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-on-surface">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold text-on-surface">{title}</h2>
           <button
             onClick={onClose}
-            className="text-on-surface-variant hover:text-on-surface"
+            aria-label="Fechar"
+            className="text-on-surface-variant hover:text-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary rounded"
           >
-            <span className="material-symbols-outlined">close</span>
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </header>
         {children}
@@ -2348,6 +2429,7 @@ function PdfImportModal({
   const [file, setFile] = useState<File | null>(null)
   const [items, setItems] = useState<ReviewItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
 
   const parse = useMutation({
     mutationFn: () => importCreditCardPdf(cardId, file!),
@@ -2378,7 +2460,11 @@ function PdfImportModal({
         })),
       })
     },
-    onSuccess: onDone,
+    onSuccess: () => {
+      const n = (items || []).filter((it) => it.accepted).length
+      toast.success(`${n} gasto(s) importado(s).`)
+      onDone()
+    },
   })
 
   const acceptedItems = (items || []).filter((it) => it.accepted)
@@ -2508,6 +2594,7 @@ function PdfImportModal({
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={it.amount}
                   onChange={(e) => {
                     const next = [...items]; next[i] = { ...it, amount: Number(e.target.value) }; setItems(next)

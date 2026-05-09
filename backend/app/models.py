@@ -270,6 +270,31 @@ class CreditCardInstallment(Base):
     expense: Mapped["CreditCardExpense"] = relationship(back_populates="installments")
 
 
+class CategoryRule(Base):
+    """Learned rule mapping a normalized description pattern to a category.
+
+    Built up automatically when the user confirms imported transactions: if
+    the same (normalized) description repeatedly maps to the same category,
+    we apply the rule directly on future imports (skipping the LLM) and
+    inject high-hit rules as few-shot examples into the LLM prompt.
+    """
+    __tablename__ = "category_rules"
+    __table_args__ = (
+        UniqueConstraint("pattern", "type", name="uq_category_rule_pattern_type"),
+        Index("idx_category_rules_pattern", "pattern"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pattern: Mapped[str] = mapped_column(String(200))  # normalized description
+    type: Mapped[str] = mapped_column(String(10))  # 'expense' | 'income'
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
+    hit_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    last_used_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    category: Mapped[Category] = relationship()
+
+
 class Income(Base):
     __tablename__ = "incomes"
     __table_args__ = (
