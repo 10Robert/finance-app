@@ -14,7 +14,7 @@ CATEGORIZE_PROMPT = """Você é um categorizador de transações financeiras.
 
 Categorias disponíveis (use exatamente esses nomes):
 {categories_json}
-
+{learned_block}
 Transações para categorizar:
 {transactions_json}
 
@@ -27,7 +27,23 @@ Para cada transação, retorne um array JSON onde cada elemento tem:
 
 Retorne APENAS JSON válido, sem blocos de código markdown, sem explicação."""
 
+
+def _format_learned_block(examples: list[dict] | None) -> str:
+    """Render learned rules as few-shot examples for the prompt."""
+    if not examples:
+        return ""
+    lines = [
+        "\nExemplos aprendidos do histórico do usuário (priorize estes padrões"
+        " quando a descrição for parecida):",
+    ]
+    for ex in examples:
+        lines.append(
+            f'- "{ex["description"]}" → categoria "{ex["category"]}" ({ex["type"]})'
+        )
+    return "\n".join(lines) + "\n"
+
 PDF_EXTRACT_PROMPT = """Você é um parser de extratos bancários e faturas de cartão de crédito.
+{learned_block}
 
 Abaixo está o conteúdo de um extrato/fatura em **Markdown estruturado**
 (tabelas em formato markdown, cabeçalhos preservados). Use a estrutura das
@@ -92,15 +108,31 @@ def _parse_json_response(text: str) -> list[dict]:
     return json.loads(text)
 
 
-async def categorize_transactions(transactions: list[dict], categories: list[dict]) -> list[dict]:
-    """Send parsed CSV transactions to Claude for categorization."""
+async def categorize_transactions(
+    transactions: list[dict],
+    categories: list[dict],
+    learned_examples: list[dict] | None = None,
+) -> list[dict]:
+    """Send parsed CSV transactions to Claude for categorization.
+
+    `learned_examples` are previously confirmed (description→category) pairs
+    injected into the prompt as few-shot guidance.
+    """
+    if not transactions:
+        return []
+
+    learned_block = _format_learned_block(learned_examples)
     # Batch in groups of 50
     results = []
     batch_size = 50
 
     for i in range(0, len(transactions), batch_size):
         batch = transactions[i : i + batch_size]
-        indexed_batch = [{"index": i + j, **t} for j, t in enumerate(batch)]
+        # Each row may already carry an "index" key; preserve it when present.
+        indexed_batch = [
+            t if "index" in t else {"index": i + j, **t}
+            for j, t in enumerate(batch)
+        ]
 
         message = await client.messages.create(
             model="claude-sonnet-4-20250514",
@@ -111,6 +143,7 @@ async def categorize_transactions(transactions: list[dict], categories: list[dic
                     "role": "user",
                     "content": CATEGORIZE_PROMPT.format(
                         categories_json=json.dumps(categories, ensure_ascii=False),
+                        learned_block=learned_block,
                         transactions_json=json.dumps(indexed_batch, ensure_ascii=False),
                     ),
                 }
@@ -131,6 +164,7 @@ async def categorize_transactions(transactions: list[dict], categories: list[dic
                         "role": "user",
                         "content": CATEGORIZE_PROMPT.format(
                             categories_json=json.dumps(categories, ensure_ascii=False),
+                            learned_block=learned_block,
                             transactions_json=json.dumps(indexed_batch, ensure_ascii=False),
                         ),
                     },
@@ -161,12 +195,17 @@ def _chunk_by_lines(text: str, max_lines: int = 400) -> list[str]:
     return chunks
 
 
-async def extract_and_categorize_pdf(pdf_text: str, categories: list[dict]) -> list[dict]:
+async def extract_and_categorize_pdf(
+    pdf_text: str,
+    categories: list[dict],
+    learned_examples: list[dict] | None = None,
+) -> list[dict]:
     """Send PDF text to Claude for extraction and categorization."""
     # Chunk only se realmente for muito grande — caso contrário, mandar tudo junto
     # garante que o LLM enxergue a fatura inteira (rodapés, seções de juros e
     # parcelas-futuras precisam estar visíveis para que ele saiba o que IGNORAR).
     chunks = _chunk_by_lines(pdf_text, max_lines=400)
+    learned_block = _format_learned_block(learned_examples)
 
     results = []
     for chunk_index, chunk in enumerate(chunks):
@@ -179,6 +218,7 @@ async def extract_and_categorize_pdf(pdf_text: str, categories: list[dict]) -> l
                     "role": "user",
                     "content": PDF_EXTRACT_PROMPT.format(
                         categories_json=json.dumps(categories, ensure_ascii=False),
+                        learned_block=learned_block,
                         pdf_text=chunk,
                     ),
                 }
