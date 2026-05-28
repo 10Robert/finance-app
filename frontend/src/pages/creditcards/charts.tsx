@@ -221,7 +221,7 @@ export function MonthStrip({
                 cx={p.x}
                 cy={p.y}
                 r={i === activeIdx ? 6 : 4}
-                fill={i === activeIdx ? ACCENT : '#0c0c0f'}
+                fill={i === activeIdx ? ACCENT : 'var(--color-surface)'}
                 stroke={ACCENT}
                 strokeWidth="2"
               />
@@ -308,9 +308,9 @@ export function SpendHeatmap({
   const H = rows * cell + (rows - 1) * gap
 
   const colorAt = (v: number) => {
-    if (v <= 0) return '#1e1e22'
+    if (v <= 0) return 'var(--color-surface-container-high)'
     const t = v / max
-    return `color-mix(in oklch, ${ACCENT} ${Math.round(20 + t * 80)}%, #18181b)`
+    return `color-mix(in oklch, ${ACCENT} ${Math.round(20 + t * 80)}%, var(--color-surface-variant))`
   }
 
   const [hover, setHover] = useState<CreditCardDailySpend | null>(null)
@@ -330,7 +330,7 @@ export function SpendHeatmap({
             <span
               key={t}
               className="w-2.5 h-2.5 rounded-sm"
-              style={{ background: `color-mix(in oklch, ${ACCENT} ${Math.round(20 + t * 80)}%, #18181b)` }}
+              style={{ background: `color-mix(in oklch, ${ACCENT} ${Math.round(20 + t * 80)}%, var(--color-surface-variant))` }}
             />
           ))}
           <span>Mais</span>
@@ -370,7 +370,7 @@ export function SpendHeatmap({
                     y={y + cell / 2 + 3}
                     textAnchor="middle"
                     fontSize="9.5"
-                    fill={v > max * 0.6 ? 'white' : '#a1a1aa'}
+                    fill={v > max * 0.6 ? 'white' : 'var(--color-on-surface-variant)'}
                     style={{ pointerEvents: 'none', fontFamily: 'ui-monospace, monospace' }}
                   >
                     {d.day}
@@ -449,14 +449,14 @@ export function StackedBarsChart({ data }: { data: CreditCardMonthSummary[] }) {
                 x2={W - padR}
                 y1={padT + iH * (1 - p)}
                 y2={padT + iH * (1 - p)}
-                stroke="#27272a"
+                stroke="var(--color-outline-variant)"
                 strokeDasharray="2 4"
               />
               <text
                 x={padL - 6}
                 y={padT + iH * (1 - p) + 3}
                 fontSize="9"
-                fill="#52525b"
+                fill="var(--color-outline)"
                 textAnchor="end"
                 style={{ fontFamily: 'ui-monospace, monospace' }}
               >
@@ -503,7 +503,7 @@ export function StackedBarsChart({ data }: { data: CreditCardMonthSummary[] }) {
                   y={H - 6}
                   fontSize="9.5"
                   textAnchor="middle"
-                  fill="#a1a1aa"
+                  fill="var(--color-on-surface-variant)"
                   style={{ fontFamily: 'ui-monospace, monospace' }}
                 >
                   {d.mes}
@@ -603,7 +603,7 @@ export function TreemapChart({
                 />
                 {r.w > 70 && (
                   <>
-                    <text x={r.x + 12} y={r.y + 24} fontSize="11" fontWeight="600" fill="#fafafa">
+                    <text x={r.x + 12} y={r.y + 24} fontSize="11" fontWeight="600" fill="var(--color-on-surface)">
                       {r.category_name}
                     </text>
                     <text
@@ -619,7 +619,7 @@ export function TreemapChart({
                       x={r.x + 12}
                       y={r.y + 58}
                       fontSize="9"
-                      fill="#a1a1aa"
+                      fill="var(--color-on-surface-variant)"
                       style={{ fontFamily: 'ui-monospace, monospace' }}
                     >
                       {pct}%

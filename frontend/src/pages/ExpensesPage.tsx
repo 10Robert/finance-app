@@ -164,8 +164,8 @@ export default function ExpensesPage() {
   const tabClass = (active: boolean) =>
     `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
       active
-        ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
-        : 'text-[#a1a1aa] border border-[#27272a] hover:text-[#fafafa] hover:bg-[#18181b]'
+        ? 'bg-primary/15 text-primary border border-primary/30'
+        : 'text-on-surface-variant border border-outline-variant hover:text-on-surface hover:bg-surface-variant'
     }`
 
   return (
@@ -173,19 +173,19 @@ export default function ExpensesPage() {
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tighter text-[#fafafa]">Análise de Gastos</h1>
-          <p className="text-sm text-[#a1a1aa]">Visão geral do desempenho financeiro {periodLabel.toLowerCase()}</p>
+          <h1 className="text-2xl font-black tracking-tighter text-on-surface">Análise de Gastos</h1>
+          <p className="text-sm text-on-surface-variant">Visão geral do desempenho financeiro {periodLabel.toLowerCase()}</p>
         </div>
         <div className="flex items-center gap-3">
           {/* Period navigation */}
-          <button onClick={prevPeriod} className="text-[#a1a1aa] hover:text-[#fafafa] transition-colors">
+          <button onClick={prevPeriod} className="text-on-surface-variant hover:text-on-surface transition-colors">
             <span className="material-symbols-outlined">chevron_left</span>
           </button>
-          <span className="text-sm font-bold text-[#fafafa] min-w-[140px] text-center">{periodLabel}</span>
-          <button onClick={nextPeriod} className="text-[#a1a1aa] hover:text-[#fafafa] transition-colors">
+          <span className="text-sm font-bold text-on-surface min-w-[140px] text-center">{periodLabel}</span>
+          <button onClick={nextPeriod} className="text-on-surface-variant hover:text-on-surface transition-colors">
             <span className="material-symbols-outlined">chevron_right</span>
           </button>
-          <div className="h-6 w-px bg-[#27272a] mx-1" />
+          <div className="h-6 w-px bg-outline-variant mx-1" />
           {/* Mode tabs */}
           <div className="flex gap-2">
             <button onClick={() => setMode('annual')} className={tabClass(mode === 'annual')}>Anual</button>
@@ -197,39 +197,39 @@ export default function ExpensesPage() {
 
       {/* ─── Summary Cards ──────────────────────────────────────────── */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#ef4444]/10 border border-[#ef4444]/20 flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#ef4444]">trending_down</span>
+        <div className="bg-surface border border-outline-variant rounded-xl p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-error/10 border border-error/20 flex items-center justify-center">
+            <span className="material-symbols-outlined text-error">trending_down</span>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Total de Gastos {mode === 'annual' ? 'no Ano' : mode === 'monthly' ? 'no Mês' : 'na Semana'}</p>
-            <p className="text-xl font-black text-[#fafafa]">{fmt(totalExpenses)}</p>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Total de Gastos {mode === 'annual' ? 'no Ano' : mode === 'monthly' ? 'no Mês' : 'na Semana'}</p>
+            <p className="text-xl font-black text-on-surface">{fmt(totalExpenses)}</p>
           </div>
         </div>
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-[#34d399]/10 border border-[#34d399]/20 flex items-center justify-center">
-            <span className="material-symbols-outlined text-[#34d399]">trending_up</span>
+        <div className="bg-surface border border-outline-variant rounded-xl p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-tertiary/10 border border-tertiary/20 flex items-center justify-center">
+            <span className="material-symbols-outlined text-tertiary">trending_up</span>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Total de Receitas {mode === 'annual' ? 'no Ano' : mode === 'monthly' ? 'no Mês' : 'na Semana'}</p>
-            <p className="text-xl font-black text-[#fafafa]">{fmt(totalIncome)}</p>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Total de Receitas {mode === 'annual' ? 'no Ano' : mode === 'monthly' ? 'no Mês' : 'na Semana'}</p>
+            <p className="text-xl font-black text-on-surface">{fmt(totalIncome)}</p>
           </div>
         </div>
-        <div className={`bg-[#0c0c0f] border rounded-xl p-5 flex items-center gap-4 ${
-          netResult >= 0 ? 'border-[#34d399]/30' : 'border-[#ef4444]/30'
+        <div className={`bg-surface border rounded-xl p-5 flex items-center gap-4 ${
+          netResult >= 0 ? 'border-tertiary/30' : 'border-error/30'
         }`}>
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
             netResult >= 0
-              ? 'bg-[#34d399]/10 border border-[#34d399]/20'
-              : 'bg-[#ef4444]/10 border border-[#ef4444]/20'
+              ? 'bg-tertiary/10 border border-tertiary/20'
+              : 'bg-error/10 border border-error/20'
           }`}>
-            <span className={`material-symbols-outlined ${netResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
+            <span className={`material-symbols-outlined ${netResult >= 0 ? 'text-tertiary' : 'text-error'}`}>
               {netResult >= 0 ? 'savings' : 'warning'}
             </span>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado (Receitas − Gastos)</p>
-            <p className={`text-xl font-black ${netResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Resultado (Receitas − Gastos)</p>
+            <p className={`text-xl font-black ${netResult >= 0 ? 'text-tertiary' : 'text-error'}`}>
               {fmt(netResult)}
             </p>
           </div>
@@ -239,27 +239,27 @@ export default function ExpensesPage() {
       {/* ─── Gastos Avulsos & Fixos ─────────────────────────────────── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Avulsos */}
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl">
-          <div className="px-5 py-4 border-b border-[#27272a] flex items-center justify-between">
+        <div className="bg-surface border border-outline-variant rounded-xl">
+          <div className="px-5 py-4 border-b border-outline-variant flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#a78bfa]">shopping_cart</span>
-              <h3 className="font-bold text-[#fafafa]">Gastos Avulsos</h3>
-              <span className="text-xs text-[#a1a1aa]">— {fmt(oneTime.reduce((s, t) => s + Math.abs(Number(t.amount)), 0))}</span>
+              <span className="material-symbols-outlined text-primary">shopping_cart</span>
+              <h3 className="font-bold text-on-surface">Gastos Avulsos</h3>
+              <span className="text-xs text-on-surface-variant">— {fmt(oneTime.reduce((s, t) => s + Math.abs(Number(t.amount)), 0))}</span>
             </div>
           </div>
-          <div className="divide-y divide-[#27272a]/50">
+          <div className="divide-y divide-outline-variant/50">
             {oneTime.length > 0 ? (
               oneTime.slice(0, 4).map((t) => (
                 <ExpenseRow key={t.id} tx={t} onMakeFixed={() => setMakeFixedTx(t)} />
               ))
             ) : (
-              <p className="p-6 text-center text-sm text-[#a1a1aa]">Nenhum gasto avulso no período</p>
+              <p className="p-6 text-center text-sm text-on-surface-variant">Nenhum gasto avulso no período</p>
             )}
           </div>
           {oneTime.length > 4 && (
             <button
               onClick={() => setShowAllOneTime(true)}
-              className="w-full py-3 text-sm font-medium text-[#a78bfa] hover:bg-[#18181b] transition-colors border-t border-[#27272a]"
+              className="w-full py-3 text-sm font-medium text-primary hover:bg-surface-variant transition-colors border-t border-outline-variant"
             >
               Ver todos os avulsos ({oneTime.length})
             </button>
@@ -267,25 +267,25 @@ export default function ExpensesPage() {
         </div>
 
         {/* Fixos */}
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-xl">
-          <div className="px-5 py-4 border-b border-[#27272a] flex items-center justify-between">
+        <div className="bg-surface border border-outline-variant rounded-xl">
+          <div className="px-5 py-4 border-b border-outline-variant flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#a78bfa]">credit_card</span>
-              <h3 className="font-bold text-[#fafafa]">Gastos Fixos / Cartão</h3>
-              <span className="text-xs text-[#a1a1aa]">— {fmt(recurring.reduce((s, t) => s + Math.abs(Number(t.amount)), 0))}</span>
+              <span className="material-symbols-outlined text-primary">credit_card</span>
+              <h3 className="font-bold text-on-surface">Gastos Fixos / Cartão</h3>
+              <span className="text-xs text-on-surface-variant">— {fmt(recurring.reduce((s, t) => s + Math.abs(Number(t.amount)), 0))}</span>
             </div>
           </div>
-          <div className="divide-y divide-[#27272a]/50">
+          <div className="divide-y divide-outline-variant/50">
             {recurring.length > 0 ? (
               recurring.slice(0, 4).map((t) => <ExpenseRow key={t.id} tx={t} />)
             ) : (
-              <p className="p-6 text-center text-sm text-[#a1a1aa]">Nenhum gasto fixo no período</p>
+              <p className="p-6 text-center text-sm text-on-surface-variant">Nenhum gasto fixo no período</p>
             )}
           </div>
           {recurring.length > 4 && (
             <button
               onClick={() => setShowAllRecurring(true)}
-              className="w-full py-3 text-sm font-medium text-[#a78bfa] hover:bg-[#18181b] transition-colors border-t border-[#27272a]"
+              className="w-full py-3 text-sm font-medium text-primary hover:bg-surface-variant transition-colors border-t border-outline-variant"
             >
               Ver plano recorrente ({recurring.length})
             </button>
@@ -294,13 +294,13 @@ export default function ExpensesPage() {
       </section>
 
       {/* ─── Pie Chart by Category ──────────────────────────────────── */}
-      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-6">
+      <section className="bg-surface border border-outline-variant rounded-xl p-6">
         <div className="mb-6">
-          <h3 className="text-[#fafafa] font-bold text-lg flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]">donut_large</span>
+          <h3 className="text-on-surface font-bold text-lg flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary">donut_large</span>
             Gastos por Categoria
           </h3>
-          <p className="text-xs text-[#a1a1aa]">Clique em uma categoria para ver os gastos detalhados</p>
+          <p className="text-xs text-on-surface-variant">Clique em uma categoria para ver os gastos detalhados</p>
         </div>
         {topCategories && topCategories.length > 0 ? (
           <div className="flex flex-col lg:flex-row items-center gap-8">
@@ -312,39 +312,39 @@ export default function ExpensesPage() {
                 <button
                   key={cat.category_name}
                   onClick={() => setDrillCategory(cat.category_name)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-[#18181b] transition-colors group"
+                  className="w-full flex items-center justify-between p-3 rounded-lg hover:bg-surface-variant transition-colors group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                    <span className="text-sm text-[#fafafa] group-hover:text-[#a78bfa] transition-colors">
+                    <span className="text-sm text-on-surface group-hover:text-primary transition-colors">
                       {cat.category_icon} {cat.category_name}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-[#fafafa]">{fmt(Number(cat.total))}</span>
-                    <span className="material-symbols-outlined text-[#a1a1aa] text-base">chevron_right</span>
+                    <span className="text-sm font-bold text-on-surface">{fmt(Number(cat.total))}</span>
+                    <span className="material-symbols-outlined text-on-surface-variant text-base">chevron_right</span>
                   </div>
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <p className="text-sm text-[#a1a1aa] text-center py-8">Sem dados de categorias no período</p>
+          <p className="text-sm text-on-surface-variant text-center py-8">Sem dados de categorias no período</p>
         )}
       </section>
 
       {/* ─── Stacked Bar Chart (final da página) ────────────────────── */}
-      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-xl p-6">
+      <section className="bg-surface border border-outline-variant rounded-xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]">bar_chart</span>
-            <h3 className="text-[#fafafa] font-bold">{chartTitle}</h3>
+            <span className="material-symbols-outlined text-primary">bar_chart</span>
+            <h3 className="text-on-surface font-bold">{chartTitle}</h3>
           </div>
           <div className="flex items-center gap-4">
             {LEGEND_ITEMS.map((l) => (
               <div key={l.label} className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
-                <span className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">{l.label}</span>
+                <span className="text-[10px] uppercase tracking-widest text-on-surface-variant">{l.label}</span>
               </div>
             ))}
           </div>
@@ -368,11 +368,11 @@ export default function ExpensesPage() {
                 return (
                   <div key={bar.label} className="flex-1 flex flex-col items-center gap-2 group relative">
                     {/* Tooltip */}
-                    <div className="absolute bottom-full mb-2 hidden group-hover:block z-10 bg-[#18181b] border border-[#27272a] rounded-lg p-3 text-xs min-w-[160px] shadow-xl">
-                      <p className="font-bold text-[#fafafa] mb-1">{bar.label}</p>
-                      <p className="text-[#a78bfa]">Acumulado: {fmtShort(Number(bar.accumulated))}</p>
-                      <p className="text-[#34d399]">Líquido: {fmtShort(Number(bar.net))}</p>
-                      <p className="text-[#ef4444]">Gastos: {fmtShort(Number(bar.expenses))}</p>
+                    <div className="absolute bottom-full mb-2 hidden group-hover:block z-10 bg-surface-variant border border-outline-variant rounded-lg p-3 text-xs min-w-[160px] shadow-xl">
+                      <p className="font-bold text-on-surface mb-1">{bar.label}</p>
+                      <p className="text-primary">Acumulado: {fmtShort(Number(bar.accumulated))}</p>
+                      <p className="text-tertiary">Líquido: {fmtShort(Number(bar.net))}</p>
+                      <p className="text-error">Gastos: {fmtShort(Number(bar.expenses))}</p>
                     </div>
                     {/* Stacked bars — tallest in back, shorter in front */}
                     <div className="relative w-full flex justify-center" style={{ height: `${Math.max(accH, expH, netH)}px` }}>
@@ -404,14 +404,14 @@ export default function ExpensesPage() {
                         }}
                       />
                     </div>
-                    <span className="text-[10px] font-bold uppercase text-[#a1a1aa]">{bar.label}</span>
+                    <span className="text-[10px] font-bold uppercase text-on-surface-variant">{bar.label}</span>
                   </div>
                 )
               })
             })()}
           </div>
         ) : (
-          <div className="h-[220px] flex items-center justify-center text-[#a1a1aa] text-sm">
+          <div className="h-[220px] flex items-center justify-center text-on-surface-variant text-sm">
             Sem dados para o período
           </div>
         )}
@@ -456,14 +456,14 @@ export default function ExpensesPage() {
 
 function ExpenseRow({ tx, onMakeFixed }: { tx: Transaction; onMakeFixed?: () => void }) {
   return (
-    <div className="px-5 py-3 flex items-center justify-between hover:bg-[#18181b]/30 transition-colors group">
+    <div className="px-5 py-3 flex items-center justify-between hover:bg-surface-variant/30 transition-colors group">
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-center text-[#a1a1aa]">
+        <div className="w-9 h-9 rounded-lg bg-surface-variant border border-outline-variant flex items-center justify-center text-on-surface-variant">
           <span className="material-symbols-outlined text-lg">{tx.icon || 'receipt_long'}</span>
         </div>
         <div>
-          <p className="text-sm font-medium text-[#fafafa]">{tx.description}</p>
-          <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">
+          <p className="text-sm font-medium text-on-surface">{tx.description}</p>
+          <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">
             {tx.category?.name || 'Sem categoria'} • {fmtDate(tx.date)}
           </p>
         </div>
@@ -473,12 +473,12 @@ function ExpenseRow({ tx, onMakeFixed }: { tx: Transaction; onMakeFixed?: () => 
           <button
             onClick={(e) => { e.stopPropagation(); onMakeFixed() }}
             title="Tornar gasto fixo"
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-[#a1a1aa] hover:text-[#3b82f6]"
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant hover:text-[#3b82f6]"
           >
             <span className="material-symbols-outlined text-lg">repeat</span>
           </button>
         )}
-        <p className="text-sm font-bold text-[#ef4444]">-{fmt(Math.abs(Number(tx.amount)))}</p>
+        <p className="text-sm font-bold text-error">-{fmt(Math.abs(Number(tx.amount)))}</p>
       </div>
     </div>
   )
@@ -544,10 +544,10 @@ function PieChart({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
       {slices}
-      <text x={cx} y={cy - 8} textAnchor="middle" className="fill-[#fafafa] text-lg font-black">
+      <text x={cx} y={cy - 8} textAnchor="middle" className="fill-on-surface text-lg font-black">
         {fmtShort(total)}
       </text>
-      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-[#a1a1aa] text-[10px] uppercase tracking-widest">
+      <text x={cx} y={cy + 12} textAnchor="middle" className="fill-on-surface-variant text-[10px] uppercase tracking-widest">
         Total
       </text>
     </svg>
@@ -582,20 +582,20 @@ function TransactionListModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="tx-list-modal-title"
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+        className="bg-surface border border-outline-variant rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center shrink-0">
-          <h3 id="tx-list-modal-title" className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]" aria-hidden="true">{icon}</span>
+        <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center shrink-0">
+          <h3 id="tx-list-modal-title" className="text-lg font-bold text-on-surface flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary" aria-hidden="true">{icon}</span>
             {title}
-            <span className="text-sm font-normal text-[#a1a1aa]">({transactions.length})</span>
+            <span className="text-sm font-normal text-on-surface-variant">({transactions.length})</span>
           </h3>
-          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-on-surface-variant hover:text-on-surface">
             close
           </button>
         </div>
-        <div className="overflow-y-auto divide-y divide-[#27272a]/50 flex-1">
+        <div className="overflow-y-auto divide-y divide-outline-variant/50 flex-1">
           {transactions.map((t) => (
             <ExpenseRow
               key={t.id}
@@ -604,9 +604,9 @@ function TransactionListModal({
             />
           ))}
         </div>
-        <div className="px-6 py-3 border-t border-[#27272a] flex justify-between items-center shrink-0 bg-[#09090b]">
-          <span className="text-sm text-[#a1a1aa]">{transactions.length} transações</span>
-          <span className="text-sm font-bold text-[#ef4444]">
+        <div className="px-6 py-3 border-t border-outline-variant flex justify-between items-center shrink-0 bg-bg">
+          <span className="text-sm text-on-surface-variant">{transactions.length} transações</span>
+          <span className="text-sm font-bold text-error">
             Total: {fmt(transactions.reduce((s, t) => s + Math.abs(Number(t.amount)), 0))}
           </span>
         </div>
@@ -650,30 +650,30 @@ function CategoryDrillModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="category-drill-title"
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+        className="bg-surface border border-outline-variant rounded-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center shrink-0">
-          <h3 id="category-drill-title" className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#a78bfa]" aria-hidden="true">category</span>
+        <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center shrink-0">
+          <h3 id="category-drill-title" className="text-lg font-bold text-on-surface flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary" aria-hidden="true">category</span>
             {categoryName}
           </h3>
-          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-on-surface-variant hover:text-on-surface">
             close
           </button>
         </div>
-        <div className="overflow-y-auto divide-y divide-[#27272a]/50 flex-1">
+        <div className="overflow-y-auto divide-y divide-outline-variant/50 flex-1">
           {isLoading ? (
-            <p className="p-8 text-center text-sm text-[#a1a1aa]">Carregando…</p>
+            <p className="p-8 text-center text-sm text-on-surface-variant">Carregando…</p>
           ) : transactions && transactions.length > 0 ? (
             transactions.map((t) => <ExpenseRow key={t.id} tx={t} />)
           ) : (
-            <p className="p-8 text-center text-sm text-[#a1a1aa]">Nenhuma transação encontrada</p>
+            <p className="p-8 text-center text-sm text-on-surface-variant">Nenhuma transação encontrada</p>
           )}
         </div>
-        <div className="px-6 py-3 border-t border-[#27272a] flex justify-between items-center shrink-0 bg-[#09090b]">
-          <span className="text-sm text-[#a1a1aa]">{transactions?.length ?? 0} transações</span>
-          <span className="text-sm font-bold text-[#ef4444]">Total: {fmt(total)}</span>
+        <div className="px-6 py-3 border-t border-outline-variant flex justify-between items-center shrink-0 bg-bg">
+          <span className="text-sm text-on-surface-variant">{transactions?.length ?? 0} transações</span>
+          <span className="text-sm font-bold text-error">Total: {fmt(total)}</span>
         </div>
       </div>
     </div>
@@ -726,7 +726,7 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
   }
 
   const inputClass =
-    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa]'
+    'w-full bg-bg border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary'
 
   return (
     <div
@@ -738,29 +738,29 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
         role="dialog"
         aria-modal="true"
         aria-labelledby="make-fixed-title"
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-md"
+        className="bg-surface border border-outline-variant rounded-xl w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
-          <h3 id="make-fixed-title" className="text-lg font-bold text-[#fafafa] flex items-center gap-2">
+        <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
+          <h3 id="make-fixed-title" className="text-lg font-bold text-on-surface flex items-center gap-2">
             <span className="material-symbols-outlined text-[#3b82f6]" aria-hidden="true">repeat</span>
             Tornar Gasto Fixo
           </h3>
-          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-on-surface-variant hover:text-on-surface">
             close
           </button>
         </div>
 
         {success ? (
           <div className="p-6 text-center space-y-3">
-            <span className="material-symbols-outlined text-[#34d399] text-5xl block">check_circle</span>
-            <p className="text-[#fafafa] font-bold">Gasto fixo criado!</p>
-            <p className="text-sm text-[#a1a1aa]">
+            <span className="material-symbols-outlined text-tertiary text-5xl block">check_circle</span>
+            <p className="text-on-surface font-bold">Gasto fixo criado!</p>
+            <p className="text-sm text-on-surface-variant">
               "{tx.description}" agora é um gasto fixo mensal. As transações foram geradas automaticamente.
             </p>
             <button
               onClick={onClose}
-              className="mt-2 px-6 py-2 bg-[#a78bfa] text-[#0a0012] rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90"
+              className="mt-2 px-6 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90"
             >
               Fechar
             </button>
@@ -768,20 +768,20 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             {/* Preview */}
-            <div className="bg-[#09090b] border border-[#27272a] rounded-lg p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-center text-[#a1a1aa]">
+            <div className="bg-bg border border-outline-variant rounded-lg p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-surface-variant border border-outline-variant flex items-center justify-center text-on-surface-variant">
                 <span className="material-symbols-outlined">{tx.icon || 'receipt_long'}</span>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-bold text-[#fafafa]">{tx.description}</p>
-                <p className="text-xs text-[#a1a1aa]">{tx.category?.name || 'Sem categoria'}</p>
+                <p className="text-sm font-bold text-on-surface">{tx.description}</p>
+                <p className="text-xs text-on-surface-variant">{tx.category?.name || 'Sem categoria'}</p>
               </div>
-              <p className="text-sm font-bold text-[#ef4444]">{fmt(Math.abs(Number(tx.amount)))}</p>
+              <p className="text-sm font-bold text-error">{fmt(Math.abs(Number(tx.amount)))}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Dia do mês</label>
+                <label className="block text-xs text-on-surface-variant mb-1">Dia do mês</label>
                 <input
                   type="number"
                   min="1"
@@ -792,7 +792,7 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
                 />
               </div>
               <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Início</label>
+                <label className="block text-xs text-on-surface-variant mb-1">Início</label>
                 <input
                   type="date"
                   required
@@ -804,15 +804,15 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
             </div>
 
             <div>
-              <label className="block text-xs text-[#a1a1aa] mb-1">Duração</label>
+              <label className="block text-xs text-on-surface-variant mb-1">Duração</label>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setIsPermanent(true)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
                     isPermanent
-                      ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
-                      : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
+                      ? 'bg-primary/15 text-primary border border-primary/30'
+                      : 'text-on-surface-variant border border-outline-variant hover:bg-surface-variant'
                   }`}
                 >
                   Permanente
@@ -822,8 +822,8 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
                   onClick={() => setIsPermanent(false)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
                     !isPermanent
-                      ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
-                      : 'text-[#a1a1aa] border border-[#27272a] hover:bg-[#18181b]'
+                      ? 'bg-primary/15 text-primary border border-primary/30'
+                      : 'text-on-surface-variant border border-outline-variant hover:bg-surface-variant'
                   }`}
                 >
                   Com prazo
@@ -833,7 +833,7 @@ function MakeFixedModal({ tx, onClose }: { tx: Transaction; onClose: () => void 
 
             {!isPermanent && (
               <div>
-                <label className="block text-xs text-[#a1a1aa] mb-1">Data final</label>
+                <label className="block text-xs text-on-surface-variant mb-1">Data final</label>
                 <input
                   type="date"
                   required={!isPermanent}

@@ -16,7 +16,7 @@ const MONTHS = [
 
 export default function DashboardPage() {
   const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
+  const [year] = useState(now.getFullYear())
   const [month, setMonth] = useState<number | undefined>(now.getMonth() + 1)
   const [flowView, setFlowView] = useState<'month' | 'year'>('month')
 
@@ -276,7 +276,7 @@ export default function DashboardPage() {
             <h4 className="font-bold text-sm mb-4">Principais Categorias</h4>
             <div className="space-y-4">
               {topCategories && topCategories.length > 0 ? (
-                topCategories.map((cat, i) => (
+                topCategories.map((cat) => (
                   <div key={cat.category_name} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div

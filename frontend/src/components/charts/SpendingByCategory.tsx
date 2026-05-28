@@ -41,7 +41,7 @@ function SpendingByCategoryChart({ data }: Props) {
             <Cell key={i} fill={COLORS[i % COLORS.length]} />
           ))}
         </Pie>
-        <Tooltip formatter={(value: number) => fmt(value)} />
+        <Tooltip formatter={(value) => fmt(Number(value))} />
         <Legend />
       </PieChart>
     </ResponsiveContainer>

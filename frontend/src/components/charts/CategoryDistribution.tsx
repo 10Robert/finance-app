@@ -23,10 +23,10 @@ export default function CategoryDistribution() {
           categories.map((cat, i) => (
             <div key={cat.name} className="space-y-2">
               <div className="flex justify-between text-xs font-bold uppercase tracking-tight">
-                <span className="text-[#d4d4d8]">{cat.name}</span>
+                <span className="text-on-surface-variant">{cat.name}</span>
                 <span className="text-on-surface">{fmt(Number(cat.total))}</span>
               </div>
-              <div className="h-2 bg-[#27272a] rounded-full overflow-hidden">
+              <div className="h-2 bg-secondary-container rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{

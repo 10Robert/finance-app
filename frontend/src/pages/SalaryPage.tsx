@@ -355,28 +355,28 @@ export default function SalaryPage() {
   )
 
   const inputClass =
-    'w-full bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-2.5 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa] focus:border-transparent placeholder:text-[#71717a]'
+    'w-full bg-bg border border-outline-variant rounded-lg px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent placeholder:text-secondary'
 
-  const cardClass = 'bg-[#0c0c0f] border border-[#27272a] rounded-lg p-6 flex flex-col'
+  const cardClass = 'bg-surface border border-outline-variant rounded-lg p-6 flex flex-col'
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tighter text-[#fafafa]">Rendimentos</h1>
-          <p className="text-sm text-[#a1a1aa]">Lançamentos do mês — horas extras, reembolsos, atrasos e faltas.</p>
+          <h1 className="text-2xl font-black tracking-tighter text-on-surface">Rendimentos</h1>
+          <p className="text-sm text-on-surface-variant">Lançamentos do mês — horas extras, reembolsos, atrasos e faltas.</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg">
-            <span className="material-symbols-outlined text-[#a78bfa] text-lg">calendar_month</span>
+          <div className="flex items-center gap-2 bg-surface border border-outline-variant px-3 py-2 rounded-lg">
+            <span className="material-symbols-outlined text-primary text-lg">calendar_month</span>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="bg-transparent outline-none text-sm font-medium text-[#fafafa] cursor-pointer"
+              className="bg-transparent outline-none text-sm font-medium text-on-surface cursor-pointer"
             >
               {MONTHS.map((m, i) => (
-                <option key={i} value={i + 1} className="bg-[#09090b]">{m}</option>
+                <option key={i} value={i + 1} className="bg-bg">{m}</option>
               ))}
             </select>
             <input
@@ -385,58 +385,58 @@ export default function SalaryPage() {
               max="2100"
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent outline-none text-sm font-medium text-[#fafafa] w-16"
+              className="bg-transparent outline-none text-sm font-medium text-on-surface w-16"
             />
           </div>
           <button
             onClick={openConfigModal}
-            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all group"
+            className="flex items-center gap-2 bg-surface border border-outline-variant px-3 py-2 rounded-lg hover:bg-surface-variant active:scale-95 transition-all group"
           >
-            <span className="material-symbols-outlined text-[#a1a1aa] text-lg group-hover:text-[#a78bfa]">settings</span>
-            <span className="text-sm font-medium text-[#fafafa]">Configurações</span>
+            <span className="material-symbols-outlined text-on-surface-variant text-lg group-hover:text-primary">settings</span>
+            <span className="text-sm font-medium text-on-surface">Configurações</span>
           </button>
         </div>
       </header>
 
       {/* Summary cards */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+        <div className="bg-surface border border-outline-variant rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[#a1a1aa] text-base">account_balance_wallet</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
+            <span className="material-symbols-outlined text-on-surface-variant text-base">account_balance_wallet</span>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Saldo Total</p>
           </div>
-          <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
-          <p className="text-xs text-[#71717a] mt-1">Acumulado até o mês</p>
+          <p className="text-2xl font-black text-on-surface">{fmt(Number(balance?.balance ?? 0))}</p>
+          <p className="text-xs text-secondary mt-1">Acumulado até o mês</p>
         </div>
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+        <div className="bg-surface border border-outline-variant rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[#a78bfa] text-base">payments</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Salário Líquido</p>
+            <span className="material-symbols-outlined text-primary text-base">payments</span>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Salário Líquido</p>
           </div>
-          <p className="text-2xl font-black text-[#a78bfa]">{fmt(netSalary)}</p>
-          <p className="text-xs text-[#71717a] mt-1">{MONTHS[selectedMonth - 1]}/{selectedYear}</p>
+          <p className="text-2xl font-black text-primary">{fmt(netSalary)}</p>
+          <p className="text-xs text-secondary mt-1">{MONTHS[selectedMonth - 1]}/{selectedYear}</p>
         </div>
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+        <div className="bg-surface border border-outline-variant rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[#ef4444] text-base">trending_down</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesa Mensal</p>
+            <span className="material-symbols-outlined text-error text-base">trending_down</span>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Despesa Mensal</p>
           </div>
-          <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseTotal)}</p>
-          <p className="text-xs text-[#71717a] mt-1">{monthExpenses?.items.length ?? 0} lançamentos</p>
+          <p className="text-2xl font-black text-error">{fmt(expenseTotal)}</p>
+          <p className="text-xs text-secondary mt-1">{monthExpenses?.items.length ?? 0} lançamentos</p>
         </div>
-        <div className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5">
+        <div className="bg-surface border border-outline-variant rounded-lg p-5">
           <div className="flex items-center gap-2 mb-2">
             <span
-              className={`material-symbols-outlined text-base ${monthlyResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}
+              className={`material-symbols-outlined text-base ${monthlyResult >= 0 ? 'text-tertiary' : 'text-error'}`}
             >
               {monthlyResult >= 0 ? 'trending_up' : 'trending_down'}
             </span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado Mensal</p>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Resultado Mensal</p>
           </div>
-          <p className={`text-2xl font-black ${monthlyResult >= 0 ? 'text-[#34d399]' : 'text-[#ef4444]'}`}>
+          <p className={`text-2xl font-black ${monthlyResult >= 0 ? 'text-tertiary' : 'text-error'}`}>
             {fmt(monthlyResult)}
           </p>
-          <p className="text-xs text-[#71717a] mt-1">Líquido − Despesas</p>
+          <p className="text-xs text-secondary mt-1">Líquido − Despesas</p>
         </div>
       </section>
 
@@ -448,14 +448,14 @@ export default function SalaryPage() {
             {/* Horas Extras */}
             <section className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded bg-[#a78bfa]/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#a78bfa]">timer</span>
+                <div className="w-10 h-10 rounded bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary">timer</span>
                 </div>
-                <h3 className="font-bold text-[#fafafa]">Lançamento de Horas Extras</h3>
+                <h3 className="font-bold text-on-surface">Lançamento de Horas Extras</h3>
               </div>
               <div className="space-y-4 flex-1">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Quantidade de Horas</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Quantidade de Horas</label>
                   <input
                     type="number"
                     step="0.5"
@@ -467,8 +467,8 @@ export default function SalaryPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Percentual</label>
-                  <div className="flex gap-1 p-1 bg-[#09090b] border border-[#27272a] rounded-lg">
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Percentual</label>
+                  <div className="flex gap-1 p-1 bg-bg border border-outline-variant rounded-lg">
                     {MULTIPLIERS.map((m) => (
                       <button
                         key={m.value}
@@ -476,8 +476,8 @@ export default function SalaryPage() {
                         onClick={() => setOvertimeMultiplier(m.value)}
                         className={`flex-1 py-1.5 text-xs font-bold rounded transition-colors ${
                           overtimeMultiplier === m.value
-                            ? 'bg-[#27272a] text-[#a78bfa]'
-                            : 'text-[#a1a1aa] hover:bg-[#0c0c0f]'
+                            ? 'bg-outline-variant text-primary'
+                            : 'text-on-surface-variant hover:bg-surface'
                         }`}
                       >
                         {m.label}
@@ -486,7 +486,7 @@ export default function SalaryPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Descrição (opcional)</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Descrição (opcional)</label>
                   <input
                     type="text"
                     value={overtimeDescription}
@@ -499,7 +499,7 @@ export default function SalaryPage() {
               <button
                 onClick={launchOvertime}
                 disabled={createMut.isPending}
-                className="w-full mt-6 py-2.5 bg-[#a78bfa] hover:bg-[#a78bfa]/90 text-[#0a0012] font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
+                className="w-full mt-6 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
               >
                 Lançar Horas Extras
               </button>
@@ -508,14 +508,14 @@ export default function SalaryPage() {
             {/* Ausências */}
             <section className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded bg-[#ef4444]/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#ef4444]">event_busy</span>
+                <div className="w-10 h-10 rounded bg-error/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-error">event_busy</span>
                 </div>
-                <h3 className="font-bold text-[#fafafa]">Lançamento de Ausências</h3>
+                <h3 className="font-bold text-on-surface">Lançamento de Ausências</h3>
               </div>
               <div className="space-y-4 flex-1">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Horas de Atraso</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Horas de Atraso</label>
                   <input
                     type="number"
                     step="0.5"
@@ -527,7 +527,7 @@ export default function SalaryPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Quantidade de Faltas (dias)</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Quantidade de Faltas (dias)</label>
                   <input
                     type="number"
                     min="0"
@@ -538,7 +538,7 @@ export default function SalaryPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Descrição (opcional)</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Descrição (opcional)</label>
                   <input
                     type="text"
                     value={absenceDescription}
@@ -551,7 +551,7 @@ export default function SalaryPage() {
               <button
                 onClick={launchAbsence}
                 disabled={createMut.isPending}
-                className="w-full mt-6 py-2.5 border border-[#ef4444]/30 hover:bg-[#ef4444]/10 text-[#ef4444] font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
+                className="w-full mt-6 py-2.5 border border-error/30 hover:bg-error/10 text-error font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
               >
                 Lançar Ausência
               </button>
@@ -560,14 +560,14 @@ export default function SalaryPage() {
             {/* Atestado Médico */}
             <section className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded bg-[#34d399]/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#34d399]">medical_services</span>
+                <div className="w-10 h-10 rounded bg-tertiary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-tertiary">medical_services</span>
                 </div>
-                <h3 className="font-bold text-[#fafafa]">Lançamento de Atestado</h3>
+                <h3 className="font-bold text-on-surface">Lançamento de Atestado</h3>
               </div>
               <div className="space-y-4 flex-1">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Dias de Atestado</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Dias de Atestado</label>
                   <input
                     type="number"
                     min="0"
@@ -578,7 +578,7 @@ export default function SalaryPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Descrição (opcional)</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Descrição (opcional)</label>
                   <input
                     type="text"
                     value={medicalDescription}
@@ -587,14 +587,14 @@ export default function SalaryPage() {
                     className={inputClass}
                   />
                 </div>
-                <p className="text-[10px] text-[#71717a] italic">
+                <p className="text-[10px] text-secondary italic">
                   Atestado médico não gera desconto de salário (empregador paga).
                 </p>
               </div>
               <button
                 onClick={launchMedical}
                 disabled={createMut.isPending}
-                className="w-full mt-6 py-2.5 border border-[#34d399]/30 hover:bg-[#34d399]/10 text-[#34d399] font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
+                className="w-full mt-6 py-2.5 border border-tertiary/30 hover:bg-tertiary/10 text-tertiary font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
               >
                 Lançar Atestado
               </button>
@@ -603,16 +603,16 @@ export default function SalaryPage() {
             {/* Reembolsos */}
             <section className={cardClass}>
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded bg-[#34d399]/10 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#34d399]">payments</span>
+                <div className="w-10 h-10 rounded bg-tertiary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-tertiary">payments</span>
                 </div>
-                <h3 className="font-bold text-[#fafafa]">Lançamento de Reembolsos</h3>
+                <h3 className="font-bold text-on-surface">Lançamento de Reembolsos</h3>
               </div>
               <div className="space-y-4 flex-1">
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Valor do Reembolso</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Valor do Reembolso</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                     <input
                       type="number"
                       step="0.01"
@@ -625,7 +625,7 @@ export default function SalaryPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] mb-1.5 block">Descrição</label>
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-1.5 block">Descrição</label>
                   <input
                     type="text"
                     value={refundDescription}
@@ -638,7 +638,7 @@ export default function SalaryPage() {
               <button
                 onClick={launchRefund}
                 disabled={createMut.isPending}
-                className="w-full mt-6 py-2.5 bg-[#34d399] hover:bg-[#34d399]/90 text-[#001a12] font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
+                className="w-full mt-6 py-2.5 bg-tertiary hover:bg-tertiary/90 text-on-tertiary font-bold rounded-lg transition-all active:scale-[0.98] disabled:opacity-50"
               >
                 Lançar Reembolso
               </button>
@@ -648,124 +648,124 @@ export default function SalaryPage() {
 
         {/* Right: Resumo do Mês */}
         <aside className="col-span-12 lg:col-span-4">
-          <div className="bg-[#121215] border border-[#27272a] rounded-xl p-6 sticky top-8 space-y-6">
-            <h3 className="text-lg font-bold text-[#fafafa] flex items-center justify-between">
+          <div className="bg-surface-container border border-outline-variant rounded-xl p-6 sticky top-8 space-y-6">
+            <h3 className="text-lg font-bold text-on-surface flex items-center justify-between">
               Resumo do Mês
-              <span className="text-xs font-normal text-[#a1a1aa]">{SHORT_MONTHS[selectedMonth - 1]}/{String(selectedYear).slice(-2)}</span>
+              <span className="text-xs font-normal text-on-surface-variant">{SHORT_MONTHS[selectedMonth - 1]}/{String(selectedYear).slice(-2)}</span>
             </h3>
 
             {!config ? (
-              <div className="text-sm text-[#a1a1aa] text-center py-6">
+              <div className="text-sm text-on-surface-variant text-center py-6">
                 Configure seu salário para ver o resumo.
               </div>
             ) : !summary ? (
-              <div className="text-sm text-[#a1a1aa] text-center py-6">Carregando…</div>
+              <div className="text-sm text-on-surface-variant text-center py-6">Carregando…</div>
             ) : (
               <>
-                <div className="flex justify-between items-center pb-4 border-b border-[#27272a]">
-                  <span className="text-sm text-[#a1a1aa]">Salário Base</span>
-                  <span className="text-sm font-bold text-[#fafafa]">{fmt(Number(summary.base_salary))}</span>
+                <div className="flex justify-between items-center pb-4 border-b border-outline-variant">
+                  <span className="text-sm text-on-surface-variant">Salário Base</span>
+                  <span className="text-sm font-bold text-on-surface">{fmt(Number(summary.base_salary))}</span>
                 </div>
 
                 <div className="space-y-3">
                   {Number(summary.meal_allowance) > 0 && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-[#a1a1aa]">Vale Refeição</span>
-                      <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.meal_allowance))}</span>
+                      <span className="text-sm text-on-surface-variant">Vale Refeição</span>
+                      <span className="text-sm font-bold text-tertiary">+ {fmt(Number(summary.meal_allowance))}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Horas Extras (+{overtimeTotalHours}h)</span>
-                    <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.overtime_value))}</span>
+                    <span className="text-sm text-on-surface-variant">Horas Extras (+{overtimeTotalHours}h)</span>
+                    <span className="text-sm font-bold text-tertiary">+ {fmt(Number(summary.overtime_value))}</span>
                   </div>
                   {Number(summary.dsr_value) > 0 && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-[#a1a1aa] flex items-center gap-1.5">
+                      <span className="text-sm text-on-surface-variant flex items-center gap-1.5">
                         DSR sobre HE
                         <span
-                          className="material-symbols-outlined text-[#71717a] text-[14px]"
+                          className="material-symbols-outlined text-secondary text-[14px]"
                           title="Descanso Semanal Remunerado proporcional às horas extras (Súmula 172 TST). Calculado sobre domingos do mês."
                         >
                           info
                         </span>
                       </span>
-                      <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.dsr_value))}</span>
+                      <span className="text-sm font-bold text-tertiary">+ {fmt(Number(summary.dsr_value))}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Reembolsos</span>
-                    <span className="text-sm font-bold text-[#34d399]">+ {fmt(Number(summary.refunds_total))}</span>
+                    <span className="text-sm text-on-surface-variant">Reembolsos</span>
+                    <span className="text-sm font-bold text-tertiary">+ {fmt(Number(summary.refunds_total))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Atrasos ({Number(summary.late_hours_total)}h)</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.late_value))}</span>
+                    <span className="text-sm text-on-surface-variant">Atrasos ({Number(summary.late_hours_total)}h)</span>
+                    <span className="text-sm font-bold text-error">- {fmt(Number(summary.late_value))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Faltas ({summary.absence_days_total}d)</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.absence_value))}</span>
+                    <span className="text-sm text-on-surface-variant">Faltas ({summary.absence_days_total}d)</span>
+                    <span className="text-sm font-bold text-error">- {fmt(Number(summary.absence_value))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">INSS</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.inss))}</span>
+                    <span className="text-sm text-on-surface-variant">INSS</span>
+                    <span className="text-sm font-bold text-error">- {fmt(Number(summary.inss))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">IRRF</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.irrf))}</span>
+                    <span className="text-sm text-on-surface-variant">IRRF</span>
+                    <span className="text-sm font-bold text-error">- {fmt(Number(summary.irrf))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Plano de Saúde</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.health_plan_deduction))}</span>
+                    <span className="text-sm text-on-surface-variant">Plano de Saúde</span>
+                    <span className="text-sm font-bold text-error">- {fmt(Number(summary.health_plan_deduction))}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-[#a1a1aa]">Plano Odontológico</span>
-                    <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.dental_plan_deduction))}</span>
+                    <span className="text-sm text-on-surface-variant">Plano Odontológico</span>
+                    <span className="text-sm font-bold text-error">- {fmt(Number(summary.dental_plan_deduction))}</span>
                   </div>
                   {Number(summary.coparticipation) > 0 && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-[#a1a1aa]">Coparticipação Saúde</span>
-                      <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.coparticipation))}</span>
+                      <span className="text-sm text-on-surface-variant">Coparticipação Saúde</span>
+                      <span className="text-sm font-bold text-error">- {fmt(Number(summary.coparticipation))}</span>
                     </div>
                   )}
                   {Number(summary.transport_voucher_value) > 0 && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-[#a1a1aa]">Vale Transporte</span>
-                      <span className="text-sm font-bold text-[#ef4444]">- {fmt(Number(summary.transport_voucher_value))}</span>
+                      <span className="text-sm text-on-surface-variant">Vale Transporte</span>
+                      <span className="text-sm font-bold text-error">- {fmt(Number(summary.transport_voucher_value))}</span>
                     </div>
                   )}
                   {summary.medical_certificate_days > 0 && (
-                    <div className="flex justify-between items-center border-t border-[#27272a] pt-3">
-                      <span className="text-sm text-[#a1a1aa] flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-[#34d399] text-sm">medical_services</span>
+                    <div className="flex justify-between items-center border-t border-outline-variant pt-3">
+                      <span className="text-sm text-on-surface-variant flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-tertiary text-sm">medical_services</span>
                         Atestado Médico ({summary.medical_certificate_days}d)
                       </span>
-                      <span className="text-xs italic text-[#71717a]">sem desconto</span>
+                      <span className="text-xs italic text-secondary">sem desconto</span>
                     </div>
                   )}
                 </div>
 
-                <div className="pt-6 border-t border-[#27272a]">
-                  <div className="bg-[#09090b] rounded-lg p-4 border border-[#a78bfa]/20">
-                    <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa] mb-1">Estimativa Líquida</p>
-                    <p className="text-2xl font-black text-[#a78bfa]">{fmt(Number(summary.net_salary))}</p>
+                <div className="pt-6 border-t border-outline-variant">
+                  <div className="bg-bg rounded-lg p-4 border border-primary/20">
+                    <p className="text-[10px] uppercase tracking-widest text-on-surface-variant mb-1">Estimativa Líquida</p>
+                    <p className="text-2xl font-black text-primary">{fmt(Number(summary.net_salary))}</p>
                   </div>
                 </div>
 
                 <div className="pt-2 space-y-2">
-                  <div className="flex items-center gap-3 bg-[#0c0c0f] rounded-lg p-3 border border-[#27272a]">
-                    <span className="material-symbols-outlined text-[#34d399]">savings</span>
+                  <div className="flex items-center gap-3 bg-surface rounded-lg p-3 border border-outline-variant">
+                    <span className="material-symbols-outlined text-tertiary">savings</span>
                     <div className="flex-1">
-                      <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo FGTS atual</p>
-                      <p className="text-sm font-bold text-[#fafafa]">{fmt(Number(summary.fgts_balance))}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Saldo FGTS atual</p>
+                      <p className="text-sm font-bold text-on-surface">{fmt(Number(summary.fgts_balance))}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 bg-[#0c0c0f] rounded-lg p-3 border border-[#27272a]">
-                    <span className="material-symbols-outlined text-[#34d399]">add_circle</span>
+                  <div className="flex items-center gap-3 bg-surface rounded-lg p-3 border border-outline-variant">
+                    <span className="material-symbols-outlined text-tertiary">add_circle</span>
                     <div className="flex-1">
-                      <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Depósito mensal estimado</p>
-                      <p className="text-sm font-bold text-[#fafafa]">{fmt(fgtsMonthlyDeposit)}</p>
+                      <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Depósito mensal estimado</p>
+                      <p className="text-sm font-bold text-on-surface">{fmt(fgtsMonthlyDeposit)}</p>
                     </div>
                   </div>
-                  <p className="text-[10px] text-[#71717a] text-center italic">
+                  <p className="text-[10px] text-secondary text-center italic">
                     informativo — não conta como receita
                   </p>
                 </div>
@@ -776,13 +776,13 @@ export default function SalaryPage() {
       </div>
 
       {/* Histórico do Mês */}
-      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
-          <h3 className="font-bold text-[#fafafa]">Histórico do Mês</h3>
+      <section className="bg-surface border border-outline-variant rounded-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
+          <h3 className="font-bold text-on-surface">Histórico do Mês</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-[#121215] text-[#a1a1aa] uppercase text-[10px] tracking-widest">
+            <thead className="bg-surface-container text-on-surface-variant uppercase text-[10px] tracking-widest">
               <tr>
                 <th className="px-6 py-3 font-medium">Data</th>
                 <th className="px-6 py-3 font-medium">Tipo</th>
@@ -791,22 +791,22 @@ export default function SalaryPage() {
                 <th className="px-6 py-3 font-medium text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#27272a]">
+            <tbody className="divide-y divide-outline-variant">
               {!entries || entries.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-[#a1a1aa] text-sm">
+                  <td colSpan={5} className="px-6 py-12 text-center text-on-surface-variant text-sm">
                     Nenhum lançamento neste mês.
                   </td>
                 </tr>
               ) : (
                 entries.map((entry) => {
                   const badge = ENTRY_BADGE[entry.entry_type]
-                  const bgColor = badge.color === 'primary' ? 'bg-[#a78bfa]/10 text-[#a78bfa]'
-                    : badge.color === 'tertiary' ? 'bg-[#34d399]/10 text-[#34d399]'
-                    : 'bg-[#ef4444]/10 text-[#ef4444]'
-                  const valueColor = badge.color === 'tertiary' ? 'text-[#34d399]'
-                    : badge.color === 'error' ? 'text-[#ef4444]'
-                    : 'text-[#a78bfa]'
+                  const bgColor = badge.color === 'primary' ? 'bg-primary/10 text-primary'
+                    : badge.color === 'tertiary' ? 'bg-tertiary/10 text-tertiary'
+                    : 'bg-error/10 text-error'
+                  const valueColor = badge.color === 'tertiary' ? 'text-tertiary'
+                    : badge.color === 'error' ? 'text-error'
+                    : 'text-primary'
                   let valueText = ''
                   if (entry.entry_type === 'refund') valueText = fmt(Number(entry.amount || 0))
                   else if (entry.entry_type === 'absence') valueText = `${entry.days} dia${entry.days === 1 ? '' : 's'}`
@@ -817,28 +817,28 @@ export default function SalaryPage() {
                   } else valueText = `${Number(entry.hours)}h`
 
                   return (
-                    <tr key={entry.id} className="hover:bg-[#18181b]/50 transition-colors">
-                      <td className="px-6 py-4 text-[#fafafa]">{fmtDate(entry.entry_date)}</td>
+                    <tr key={entry.id} className="hover:bg-surface-variant/50 transition-colors">
+                      <td className="px-6 py-4 text-on-surface">{fmtDate(entry.entry_date)}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${bgColor}`}>
                           <span className="material-symbols-outlined text-xs">{badge.icon}</span>
                           {badge.label}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-[#a1a1aa]">{entry.description || '—'}</td>
+                      <td className="px-6 py-4 text-on-surface-variant">{entry.description || '—'}</td>
                       <td className={`px-6 py-4 font-bold ${valueColor}`}>{valueText}</td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-3">
                           <button
                             onClick={() => openEdit(entry)}
-                            className="text-[#a1a1aa] hover:text-[#a78bfa] transition-colors"
+                            className="text-on-surface-variant hover:text-primary transition-colors"
                             aria-label="Editar"
                           >
                             <span className="material-symbols-outlined text-lg">edit</span>
                           </button>
                           <button
                             onClick={() => confirmDelete(entry.id)}
-                            className="text-[#a1a1aa] hover:text-[#ef4444] transition-colors"
+                            className="text-on-surface-variant hover:text-error transition-colors"
                             aria-label="Excluir"
                           >
                             <span className="material-symbols-outlined text-lg">delete</span>
@@ -862,21 +862,21 @@ export default function SalaryPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="salary-config-title"
-            className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto"
+            className="bg-surface-container border border-outline-variant rounded-xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center">
               <div>
-                <h3 id="salary-config-title" className="text-lg font-bold text-[#fafafa]">Configurações de Rendimentos</h3>
-                <p className="text-xs text-[#a78bfa] mt-0.5">
+                <h3 id="salary-config-title" className="text-lg font-bold text-on-surface">Configurações de Rendimentos</h3>
+                <p className="text-xs text-primary mt-0.5">
                   Referente a {MONTHS[selectedMonth - 1]}/{selectedYear}
                 </p>
               </div>
-              <button onClick={() => setShowConfig(false)} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
+              <button onClick={() => setShowConfig(false)} aria-label="Fechar" className="material-symbols-outlined text-on-surface-variant hover:text-on-surface">close</button>
             </div>
 
-            <div className="bg-[#a78bfa]/10 border border-[#a78bfa]/20 rounded-lg px-3 py-2">
-              <p className="text-xs text-[#a78bfa] flex items-start gap-1.5">
+            <div className="bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+              <p className="text-xs text-primary flex items-start gap-1.5">
                 <span className="material-symbols-outlined text-sm mt-0.5">info</span>
                 <span>
                   Ao salvar, estas configurações se aplicam <strong>somente a {MONTHS[selectedMonth - 1]}/{selectedYear}</strong>. Outros meses mantêm suas próprias configurações.
@@ -886,61 +886,61 @@ export default function SalaryPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Salário Bruto (referência)</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Salário Bruto (referência)</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgBaseSalary} onChange={(e) => setCfgBaseSalary(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Vale Refeição / Alimentação</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Vale Refeição / Alimentação</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgMealAllowance} onChange={(e) => setCfgMealAllowance(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Plano de Saúde (mensalidade)</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Plano de Saúde (mensalidade)</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgHealthPlan} onChange={(e) => setCfgHealthPlan(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Coparticipação Plano de Saúde</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Coparticipação Plano de Saúde</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgCoparticipation} onChange={(e) => setCfgCoparticipation(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
-                <p className="text-[10px] text-[#71717a] mt-1 italic">
+                <p className="text-[10px] text-secondary mt-1 italic">
                   Valor variável cobrado mensalmente conforme uso do plano.
                 </p>
               </div>
 
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Plano Odontológico</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Plano Odontológico</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgDentalPlan} onChange={(e) => setCfgDentalPlan(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-[#27272a]">
+              <div className="pt-2 border-t border-outline-variant">
                 <div className="flex items-center justify-between mb-3">
-                  <label className="text-sm font-medium text-[#fafafa]">Vale Transporte</label>
+                  <label className="text-sm font-medium text-on-surface">Vale Transporte</label>
                   <button
                     type="button"
                     onClick={() => setCfgVtEnabled((v) => !v)}
-                    className={`relative w-11 h-6 rounded-full transition-colors ${cfgVtEnabled ? 'bg-[#a78bfa]' : 'bg-[#27272a]'}`}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${cfgVtEnabled ? 'bg-primary' : 'bg-outline-variant'}`}
                     aria-pressed={cfgVtEnabled}
                   >
                     <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${cfgVtEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
                 </div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Percentual de Desconto</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Percentual de Desconto</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -952,14 +952,14 @@ export default function SalaryPage() {
                     disabled={!cfgVtEnabled}
                     className={`${inputClass} pr-8 disabled:opacity-50`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">%</span>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-[#27272a]">
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Saldo FGTS Atual</label>
+              <div className="pt-2 border-t border-outline-variant">
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Saldo FGTS Atual</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1aa] text-sm">R$</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">R$</span>
                   <input type="number" step="0.01" min="0" value={cfgFgts} onChange={(e) => setCfgFgts(e.target.value)} className={`${inputClass} pl-10`} />
                 </div>
               </div>
@@ -968,7 +968,7 @@ export default function SalaryPage() {
             <button
               onClick={() => saveConfigMut.mutate()}
               disabled={saveConfigMut.isPending}
-              className="w-full py-3 bg-[#a78bfa] hover:bg-[#a78bfa]/90 text-[#0a0012] font-bold rounded-lg transition-colors disabled:opacity-50"
+              className="w-full py-3 bg-primary hover:bg-primary/90 text-on-primary font-bold rounded-lg transition-colors disabled:opacity-50"
             >
               {saveConfigMut.isPending ? 'Salvando…' : 'Salvar Configurações'}
             </button>
@@ -984,16 +984,16 @@ export default function SalaryPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-entry-title"
-            className="bg-[#121215] border border-[#27272a] rounded-xl p-6 w-full max-w-md space-y-4"
+            className="bg-surface-container border border-outline-variant rounded-xl p-6 w-full max-w-md space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center">
-              <h3 id="edit-entry-title" className="text-lg font-bold text-[#fafafa]">Editar {ENTRY_BADGE[editing.entry_type].label}</h3>
-              <button onClick={() => setEditing(null)} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">close</button>
+              <h3 id="edit-entry-title" className="text-lg font-bold text-on-surface">Editar {ENTRY_BADGE[editing.entry_type].label}</h3>
+              <button onClick={() => setEditing(null)} aria-label="Fechar" className="material-symbols-outlined text-on-surface-variant hover:text-on-surface">close</button>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">
                   {editing.entry_type === 'refund'
                     ? 'Valor (R$)'
                     : editing.entry_type === 'absence' || editing.entry_type === 'medical_certificate'
@@ -1011,15 +1011,15 @@ export default function SalaryPage() {
               </div>
               {editing.entry_type === 'overtime' && (
                 <div>
-                  <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Percentual</label>
-                  <div className="flex gap-1 p-1 bg-[#09090b] border border-[#27272a] rounded-lg">
+                  <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Percentual</label>
+                  <div className="flex gap-1 p-1 bg-bg border border-outline-variant rounded-lg">
                     {MULTIPLIERS.map((m) => (
                       <button
                         key={m.value}
                         type="button"
                         onClick={() => setEditMultiplier(m.value)}
                         className={`flex-1 py-1.5 text-xs font-bold rounded transition-colors ${
-                          editMultiplier === m.value ? 'bg-[#27272a] text-[#a78bfa]' : 'text-[#a1a1aa] hover:bg-[#0c0c0f]'
+                          editMultiplier === m.value ? 'bg-outline-variant text-primary' : 'text-on-surface-variant hover:bg-surface'
                         }`}
                       >
                         {m.label}
@@ -1029,7 +1029,7 @@ export default function SalaryPage() {
                 </div>
               )}
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-[#a1a1aa] block mb-1.5">Descrição</label>
+                <label className="text-[10px] uppercase tracking-wider text-on-surface-variant block mb-1.5">Descrição</label>
                 <input
                   type="text"
                   value={editDescription}
@@ -1042,13 +1042,13 @@ export default function SalaryPage() {
               <button
                 onClick={saveEdit}
                 disabled={updateMut.isPending}
-                className="flex-1 py-2.5 bg-[#a78bfa] hover:bg-[#a78bfa]/90 text-[#0a0012] font-bold rounded-lg transition-colors disabled:opacity-50"
+                className="flex-1 py-2.5 bg-primary hover:bg-primary/90 text-on-primary font-bold rounded-lg transition-colors disabled:opacity-50"
               >
                 {updateMut.isPending ? 'Salvando…' : 'Salvar'}
               </button>
               <button
                 onClick={() => setEditing(null)}
-                className="flex-1 py-2.5 border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] font-medium rounded-lg transition-colors"
+                className="flex-1 py-2.5 border border-outline-variant text-on-surface-variant hover:text-on-surface font-medium rounded-lg transition-colors"
               >
                 Cancelar
               </button>

@@ -19,12 +19,12 @@ function TransactionListCard({ transactions, title, icon }: Props) {
           {title}
         </h4>
       </div>
-      <div className="bg-surface-container border border-outline-variant rounded-xl divide-y divide-[#27272a]/50">
+      <div className="bg-surface-container border border-outline-variant rounded-xl divide-y divide-outline-variant/50">
         {transactions.length > 0 ? (
           transactions.map((txn) => (
-            <div key={txn.id} className="p-4 flex items-center justify-between hover:bg-[#18181b]/30 transition-colors">
+            <div key={txn.id} className="p-4 flex items-center justify-between hover:bg-surface-variant/30 transition-colors">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-center text-on-surface-variant">
+                <div className="w-10 h-10 rounded-lg bg-surface-variant border border-outline-variant flex items-center justify-center text-on-surface-variant">
                   <span className="material-symbols-outlined">{txn.icon || 'receipt_long'}</span>
                 </div>
                 <div>
