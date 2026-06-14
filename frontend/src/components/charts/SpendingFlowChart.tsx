@@ -24,29 +24,29 @@ function SpendingFlowChart({ data }: Props) {
             <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+        <CartesianGrid stroke="var(--color-outline-variant)" strokeDasharray="3 3" />
         <XAxis
           dataKey="label"
-          tick={{ fill: '#71717a', fontSize: 10 }}
-          axisLine={{ stroke: '#27272a' }}
+          tick={{ fill: 'var(--color-secondary)', fontSize: 10 }}
+          axisLine={{ stroke: 'var(--color-outline-variant)' }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fill: '#71717a', fontSize: 10 }}
+          tick={{ fill: 'var(--color-secondary)', fontSize: 10 }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
         />
         <Tooltip
           contentStyle={{
-            background: '#121215',
-            border: '1px solid #27272a',
+            background: 'var(--color-surface-container)',
+            border: '1px solid var(--color-outline-variant)',
             borderRadius: '8px',
-            color: '#fafafa',
+            color: 'var(--color-on-surface)',
             fontSize: 12,
           }}
-          formatter={(value: number) => [fmt(value), 'Gastos']}
-          labelStyle={{ color: '#a1a1aa' }}
+          formatter={(value) => [fmt(Number(value)), 'Gastos']}
+          labelStyle={{ color: 'var(--color-on-surface-variant)' }}
         />
         <Area
           type="monotone"

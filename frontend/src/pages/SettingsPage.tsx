@@ -122,7 +122,7 @@ export default function SettingsPage() {
                 value={salary}
                 onChange={(e) => setSalary(e.target.value)}
                 placeholder="0,00"
-                className="w-full bg-[#09090b] border border-outline-variant rounded-lg py-3 pl-12 pr-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder-[#3f3f46]"
+                className="w-full bg-bg border border-outline-variant rounded-lg py-3 pl-12 pr-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder-secondary"
               />
             </div>
           </div>
@@ -172,7 +172,7 @@ export default function SettingsPage() {
                   value={catName}
                   onChange={(e) => setCatName(e.target.value)}
                   placeholder="Ex: Assinaturas"
-                  className="w-full bg-[#09090b] border border-outline-variant rounded-lg py-3 px-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder-[#3f3f46]"
+                  className="w-full bg-bg border border-outline-variant rounded-lg py-3 px-4 text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder-secondary"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && catName.trim()) createCatMutation.mutate()
                   }}
@@ -192,7 +192,7 @@ export default function SettingsPage() {
                       className={`aspect-square rounded-lg flex items-center justify-center transition-all ${
                         catIcon === opt.icon
                           ? 'border-2 border-primary bg-primary/10 text-primary'
-                          : 'bg-[#18181b] border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary'
+                          : 'bg-surface-variant border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary'
                       }`}
                     >
                       <span className="material-symbols-outlined">{opt.icon}</span>
@@ -204,7 +204,7 @@ export default function SettingsPage() {
                     className={`aspect-square rounded-lg flex items-center justify-center transition-all ${
                       showAllIcons
                         ? 'border-2 border-primary bg-primary/10 text-primary'
-                        : 'bg-[#18181b] border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary'
+                        : 'bg-surface-variant border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary'
                     }`}
                   >
                     <span className="material-symbols-outlined">
@@ -241,10 +241,10 @@ export default function SettingsPage() {
                 expenseCategories.map((cat) => (
                   <div
                     key={cat.id}
-                    className="flex items-center justify-between p-4 hover:bg-[#18181b]/30 transition-colors"
+                    className="flex items-center justify-between p-4 hover:bg-surface-variant/30 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-[#18181b] flex items-center justify-center text-primary">
+                      <div className="w-10 h-10 rounded-lg bg-surface-variant flex items-center justify-center text-primary">
                         <span className="material-symbols-outlined">
                           {cat.icon || 'category'}
                         </span>
@@ -267,7 +267,7 @@ export default function SettingsPage() {
                         </button>
                         <button
                           onClick={() => setDeletingId(null)}
-                          className="px-3 py-1.5 text-xs font-medium text-on-surface-variant rounded-lg hover:bg-[#18181b] transition-colors"
+                          className="px-3 py-1.5 text-xs font-medium text-on-surface-variant rounded-lg hover:bg-surface-variant transition-colors"
                         >
                           Cancelar
                         </button>

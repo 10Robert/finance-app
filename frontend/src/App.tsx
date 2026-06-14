@@ -8,6 +8,7 @@ const SalaryPage = lazy(() => import('./pages/SalaryPage'))
 const ExpensesPage = lazy(() => import('./pages/ExpensesPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const CreditCardsPage = lazy(() => import('./pages/CreditCardsPage'))
+const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 
 function PageFallback() {
   return (
@@ -91,7 +92,7 @@ export default function App() {
 
       {/* Main */}
       <div
-        className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-200 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}
+        className={`flex-1 flex flex-col min-h-screen min-w-0 transition-[margin] duration-200 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}
         style={sidebarOpen ? { width: 'calc(100% - 16rem)' } : undefined}
       >
         {!sidebarOpen && (
@@ -110,6 +111,7 @@ export default function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/credit-cards" element={<CreditCardsPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/transactions" element={<TransactionsPage />} />
               <Route path="/salary" element={<SalaryPage />} />
               <Route path="/settings" element={<SettingsPage />} />

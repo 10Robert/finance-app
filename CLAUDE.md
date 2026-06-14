@@ -15,7 +15,8 @@ App fullstack de gestão financeira pessoal com tema dark "Obsidian". Permite co
 - **PostgreSQL** via asyncpg + **SQLAlchemy 2.0** (async ORM)
 - **Pydantic v2** — validação de dados/schemas
 - **Anthropic Claude API** — categorização inteligente de extratos bancários
-- **pdfplumber** — parsing de PDFs
+- **pdfplumber** — parsing de extratos PDF
+- **docling** — parsing de faturas de cartão em PDF
 
 ### Frontend
 - **React 19** + **TypeScript** + **Vite 8**
@@ -49,16 +50,23 @@ finance-app/
 │       ├── seed_categories.py   # 22 categorias padrão PT-BR
 │       ├── seed_data.py         # Dados iniciais
 │       ├── routers/
-│       │   ├── dashboard.py     # Endpoints: balance, revenue, spending-flow, top-categories, recent-transactions, chart-6months, category-progress, transactions-grouped
-│       │   ├── transactions.py  # CRUD transações
-│       │   ├── categories.py    # CRUD categorias
-│       │   ├── imports.py       # Upload/process/confirm extratos
-│       │   ├── salary.py        # Config salário, descontos, horas extras, cálculo
-│       │   └── incomes.py       # Cálculo INSS/IRRF, histórico de renda
+│       │   ├── dashboard.py        # balance, monthly-revenue, spending-flow, top-categories, recent-transactions, summary, spending-by-category, monthly-trends, chart-6months, category-progress, transactions-grouped, expenses-chart, category-transactions
+│       │   ├── transactions.py     # CRUD transações
+│       │   ├── categories.py       # CRUD categorias
+│       │   ├── imports.py          # Upload/process/confirm extratos
+│       │   ├── salary.py           # Config salário, descontos, horas extras, cálculo
+│       │   ├── incomes.py          # Cálculo INSS/IRRF, histórico de renda
+│       │   ├── monthly_entries.py  # Lançamentos do mês (overtime/refund/late/absence) + summary
+│       │   ├── fixed_expenses.py   # Gastos fixos recorrentes
+│       │   ├── installments.py     # Compras parceladas
+│       │   └── credit_cards.py     # Cartões, gastos, faturas, parcelas, assinaturas, import PDF, analytics
 │       └── services/
 │           ├── import_service.py
 │           ├── llm_service.py        # Claude API para categorização
 │           ├── parser_service.py     # Parse CSV/PDF
+│           ├── docling_service.py    # Parse de fatura PDF (cartão) via docling
+│           ├── category_learning.py  # Aprende regras de categoria a partir de imports confirmados
+│           ├── salary_sync.py        # Sincroniza config de salário ↔ rendas
 │           └── salary_calculator.py
 ├── frontend/
 │   └── src/
@@ -70,14 +78,19 @@ finance-app/
 │       │   ├── DashboardPage.tsx    # Painel — cards resumo, fluxo gastos, categorias, transações recentes
 │       │   ├── ExpensesPage.tsx     # Gastos — gráfico 6 meses, distribuição categoria, avulsos/fixos
 │       │   ├── TransactionsPage.tsx # Transações — CRUD com tabela e formulário
-│       │   ├── ImportPage.tsx       # Importação — upload e revisão de extratos
 │       │   ├── SalaryPage.tsx       # Rendimentos — cálculo salário com INSS/IRRF
-│       │   └── SettingsPage.tsx     # Configurações — salário bruto, gerenciar categorias
+│       │   ├── SettingsPage.tsx     # Configurações — salário bruto, gerenciar categorias
+│       │   ├── CreditCardsPage.tsx  # Cartão de Crédito — orquestra cartões, faturas, lançamentos
+│       │   └── creditcards/         # Componentes da página de cartão (split do monolito)
+│       │       ├── shared.tsx       # Constantes, formatadores e primitivas (Modal, Field, etc.)
+│       │       ├── charts.tsx       # MonthStrip, SpendHeatmap, StackedBarsChart, TreemapChart
+│       │       └── modals.tsx       # AddTx, MonthDetail, Lancamento, CardForm, Bill, Anticipate, EditExpense, PdfImport
 │       ├── components/
 │       │   ├── TransactionForm.tsx
 │       │   ├── TransactionTable.tsx
 │       │   ├── TransactionListCard.tsx
 │       │   ├── ImportReview.tsx
+│       │   ├── feedback/            # Toast, ConfirmDialog (hooks useToast/useConfirm)
 │       │   ├── charts/
 │       │   │   ├── SpendingFlowChart.tsx
 │       │   │   ├── MonthlySpendingChart.tsx
@@ -88,8 +101,12 @@ finance-app/
 │       │   └── income/
 │       │       ├── MonthlySummary.tsx
 │       │       └── IncomeHistory.tsx
+│       ├── theme/
+│       │   └── ThemeContext.tsx     # Tema claro/escuro persistente
 │       └── utils/
-│           └── salaryCalc.ts
+│           ├── salaryCalc.ts
+│           ├── a11y.ts              # useFocusTrap, useEscapeKey
+│           └── errors.ts            # extractError
 ├── start.bat / stop.bat / reload.bat
 ├── .claude/launch.json          # Configs para preview (FastAPI + Vite)
 └── CLAUDE.md                    # Este arquivo
@@ -103,10 +120,12 @@ finance-app/
 |------|--------|-----------|
 | `/` | DashboardPage | Painel com 4 cards resumo, fluxo de gastos, top categorias, transações recentes |
 | `/expenses` | ExpensesPage | Gráfico 6 meses, distribuição por categoria, gastos avulsos e fixos |
+| `/credit-cards` | CreditCardsPage | Cartões, faturas mensais, lançamentos, parcelas, assinaturas, import de fatura PDF |
 | `/transactions` | TransactionsPage | CRUD completo de transações com filtros |
-| `/import` | ImportPage | Upload e revisão de extratos bancários (CSV/PDF) |
 | `/salary` | SalaryPage | Cálculo de rendimentos com INSS/IRRF |
 | `/settings` | SettingsPage | Salário bruto, gerenciar categorias de gastos |
+
+> **Obs:** o item de menu `/reports` (Relatórios) existe na sidebar mas ainda não tem rota/página implementada.
 
 ---
 
@@ -118,9 +137,14 @@ finance-app/
 - `GET /spending-flow` — pontos de fluxo (mensal/anual)
 - `GET /top-categories` — top N categorias por gasto
 - `GET /recent-transactions` — últimas N transações
+- `GET /summary` — resumo agregado
+- `GET /spending-by-category` — gasto por categoria
+- `GET /monthly-trends` — tendências mensais
 - `GET /chart-6months` — gastos dos últimos 6 meses
 - `GET /category-progress` — breakdown por categoria com %
 - `GET /transactions-grouped` — avulsos vs recorrentes
+- `GET /expenses-chart` — dados do gráfico da tela de Gastos
+- `GET /category-transactions` — transações de uma categoria
 
 ### Transactions (`/api/transactions/`)
 - `GET /` — listar (paginado, com filtros)
@@ -156,7 +180,38 @@ finance-app/
 - `POST /calculate` — simular renda
 - `POST /launch` — lançar renda
 - `GET /` — listar rendas
+- `GET /{id}` — obter renda
 - `DELETE /{id}` — deletar
+
+### Monthly Entries (`/api/monthly-entries/`)
+- `GET /` — listar lançamentos do mês (overtime/refund/late/absence)
+- `POST /` — criar lançamento
+- `PUT /{id}` — atualizar
+- `DELETE /{id}` — remover
+- `GET /summary` — resumo consolidado do mês (bruto, descontos, líquido, FGTS)
+
+### Fixed Expenses (`/api/fixed-expenses/`)
+- `GET /` — listar gastos fixos
+- `POST /` — criar gasto fixo (permanente ou com data de término)
+- `DELETE /{id}` — remover
+
+### Installments (`/api/installments/`)
+- `GET /` — listar compras parceladas
+- `POST /` — criar compra parcelada
+- `DELETE /{id}` — remover
+
+### Credit Cards (`/api/credit-cards/`)
+- `GET /cards` · `POST /cards` · `PUT /cards/{id}` · `DELETE /cards/{id}` — CRUD de cartões
+- `POST /expenses` · `GET /expenses` · `PUT /expenses/{id}` · `DELETE /expenses/{id}` — gastos
+- `POST /expenses/{id}/refund` · `POST /expenses/{id}/unrefund` — marcar/desfazer reembolso
+- `POST /expenses/bulk` — criação em lote (usado pelo import de PDF)
+- `POST /installments/{id}/anticipate` — antecipar parcela para outro mês
+- `GET /bills/months` — resumo por mês das faturas
+- `GET /bills/{year}/{month}` — itens da fatura de um mês
+- `GET /subscriptions` — assinaturas ativas
+- `GET /analytics/daily/{year}/{month}` — gasto por dia (heatmap)
+- `GET /analytics/by-category` · `GET /analytics/by-type` — analytics da fatura
+- `POST /import-pdf/parse` — analisar fatura PDF com IA (retorna itens para revisão)
 
 ---
 
@@ -180,13 +235,20 @@ finance-app/
 ## Modelos do Banco (SQLAlchemy)
 
 - **Category** — id, name, type (expense/income), icon
-- **Transaction** — id, date, description, amount, type, category_id, is_recurring, recurring_day, icon, notes
+- **Transaction** — id, date, description, amount, type, category_id, is_recurring, recurring_day, icon, source, notes, bank_import_id
 - **BankImport** — id, filename, file_type, row_count, status, error_message
 - **StagedTransaction** — id, bank_import_id, date, description, amount, type, category_id, confidence, original_text, accepted
-- **SalaryConfig** — id, base_salary, overtime_hour_rate, meal_allowance, health_plan_deduction
+- **SalaryConfig** — id, reference_month/year (constraint único), base_salary, overtime_hour_rate, meal_allowance, health_plan_deduction, dental_plan_deduction, transport_voucher_enabled/percent, coparticipation, fgts_balance
 - **Discount** — id, salary_config_id, name, type (fixed/percent), value
 - **OvertimeEntry** — id, salary_config_id, month, year, hours, rate_percent (70/100)
-- **Income** — id, reference_month/year, base_salary, meal_allowance, health_plan_deduction, overtime_hours/multiplier, monthly_bonus, discounts_absences, overtime_value, inss, irrf, total_gross, total_deductions, net_salary
+- **MonthlyEntry** — id, reference_month/year, entry_type (overtime/refund/late/absence), entry_date, description, amount, hours, overtime_multiplier (0.30/0.70/1.00), days
+- **FixedExpense** — id, description, amount, category_id, day_of_month, is_permanent, start_date, end_date, active, icon
+- **InstallmentPurchase** — id, description, total_amount, installment_count, category_id, start_date, icon
+- **CreditCard** — id, name, brand, color, credit_limit, closing_day, due_day, active
+- **CreditCardExpense** — id, credit_card_id, category_id, description, amount, purchase_date, installment_count, is_subscription, is_refunded, refunded_at, notes, icon
+- **CreditCardInstallment** — id, expense_id, credit_card_id, installment_number, amount, bill_month/year, original_bill_month/year (rastreio de antecipação)
+- **CategoryRule** — id, pattern (descrição normalizada), type, category_id, hit_count, last_used_at — regra aprendida para categorizar imports automaticamente
+- **Income** — id, reference_month/year, base_salary, meal_allowance, health_plan_deduction, overtime_hours/multiplier, monthly_bonus, discounts_absences, overtime_value, dsr_value, inss, irrf, total_gross, total_deductions, net_salary
 
 ---
 
@@ -241,3 +303,4 @@ git push origin master
 - Usar TanStack Query para todas as chamadas de API no frontend (queryKey + invalidation)
 - Material Symbols Outlined para ícones (não Font Awesome)
 - Confirmar com o usuário antes de push para GitHub
+- **Migrações de schema:** atualmente feitas via `ALTER TABLE ... IF NOT EXISTS` inline no `lifespan` de `main.py` (`create_all` só cria tabelas novas, nunca adiciona colunas). Alembic já está nas dependências mas ainda não há migrations versionadas.

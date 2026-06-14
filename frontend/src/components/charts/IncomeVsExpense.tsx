@@ -24,10 +24,19 @@ function IncomeVsExpenseChart({ data }: Props) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <AreaChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-        <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-        <Tooltip formatter={(value: number) => fmt(value)} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-outline-variant)" />
+        <XAxis dataKey="month" tick={{ fontSize: 12, fill: 'var(--color-on-surface-variant)' }} />
+        <YAxis tick={{ fontSize: 12, fill: 'var(--color-on-surface-variant)' }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+        <Tooltip
+          formatter={(value) => fmt(Number(value))}
+          contentStyle={{
+            background: 'var(--color-surface-container)',
+            border: '1px solid var(--color-outline-variant)',
+            borderRadius: '8px',
+            color: 'var(--color-on-surface)',
+          }}
+          labelStyle={{ color: 'var(--color-on-surface-variant)' }}
+        />
         <Area type="monotone" dataKey="Receita" stroke="#10b981" fill="#10b98130" strokeWidth={2} />
         <Area type="monotone" dataKey="Despesa" stroke="#ef4444" fill="#ef444430" strokeWidth={2} />
         <Area type="monotone" dataKey="Saldo" stroke="#3b82f6" fill="#3b82f630" strokeWidth={2} />

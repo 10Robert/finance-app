@@ -296,15 +296,15 @@ export default function TransactionsPage() {
     URL.revokeObjectURL(url)
   }
 
-  const cardClass = 'bg-[#0c0c0f] border border-[#27272a] rounded-lg p-5'
+  const cardClass = 'bg-surface border border-outline-variant rounded-lg p-5'
   const inputClass =
-    'bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-[#fafafa] focus:outline-none focus:ring-2 focus:ring-[#a78bfa] focus:border-transparent'
+    'bg-bg border border-outline-variant rounded-lg px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent'
 
   const tabClass = (active: boolean) =>
     `px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
       active
-        ? 'bg-[#a78bfa]/15 text-[#a78bfa] border border-[#a78bfa]/30'
-        : 'text-[#a1a1aa] border border-[#27272a] hover:text-[#fafafa] hover:bg-[#18181b]'
+        ? 'bg-primary/15 text-primary border border-primary/30'
+        : 'text-on-surface-variant border border-outline-variant hover:text-on-surface hover:bg-surface-variant'
     }`
 
   return (
@@ -312,8 +312,8 @@ export default function TransactionsPage() {
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tighter text-[#fafafa]">Transações</h1>
-          <p className="text-sm text-[#a1a1aa]">
+          <h1 className="text-2xl font-black tracking-tighter text-on-surface">Transações</h1>
+          <p className="text-sm text-on-surface-variant">
             Gerencie todas as suas movimentações financeiras em um só lugar.
           </p>
         </div>
@@ -322,39 +322,39 @@ export default function TransactionsPage() {
           <div ref={importMenuRef} className="relative">
             <button
               onClick={() => setShowImportMenu((v) => !v)}
-              className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
+              className="flex items-center gap-2 bg-surface border border-outline-variant px-3 py-2 rounded-lg hover:bg-surface-variant active:scale-95 transition-all"
             >
-              <span className="material-symbols-outlined text-[#a1a1aa] text-lg">upload_file</span>
-              <span className="text-sm font-medium text-[#fafafa]">Importar Gastos</span>
-              <span className="material-symbols-outlined text-[#a1a1aa] text-base">expand_more</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-lg">upload_file</span>
+              <span className="text-sm font-medium text-on-surface">Importar Gastos</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-base">expand_more</span>
             </button>
             {showImportMenu && (
-              <div className="absolute right-0 mt-2 w-56 bg-[#0c0c0f] border border-[#27272a] rounded-lg shadow-2xl overflow-hidden z-20">
+              <div className="absolute right-0 mt-2 w-56 bg-surface border border-outline-variant rounded-lg shadow-2xl overflow-hidden z-20">
                 <button
                   onClick={() => {
                     setShowImportMenu(false)
                     setShowImport(true)
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#18181b] transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-variant transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[#a78bfa] text-lg">picture_as_pdf</span>
+                  <span className="material-symbols-outlined text-primary text-lg">picture_as_pdf</span>
                   <div>
-                    <p className="text-sm font-medium text-[#fafafa]">Exportar PDF</p>
-                    <p className="text-[10px] text-[#a1a1aa]">Extrato bancário (PDF / CSV)</p>
+                    <p className="text-sm font-medium text-on-surface">Exportar PDF</p>
+                    <p className="text-[10px] text-on-surface-variant">Extrato bancário (PDF / CSV)</p>
                   </div>
                 </button>
-                <div className="h-px bg-[#27272a]" />
+                <div className="h-px bg-outline-variant" />
                 <button
                   onClick={() => {
                     setShowImportMenu(false)
                     setShowJsonImport(true)
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#18181b] transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-surface-variant transition-colors"
                 >
-                  <span className="material-symbols-outlined text-[#34d399] text-lg">data_object</span>
+                  <span className="material-symbols-outlined text-tertiary text-lg">data_object</span>
                   <div>
-                    <p className="text-sm font-medium text-[#fafafa]">Exportar JSON</p>
-                    <p className="text-[10px] text-[#a1a1aa]">Arquivo .json estruturado</p>
+                    <p className="text-sm font-medium text-on-surface">Exportar JSON</p>
+                    <p className="text-[10px] text-on-surface-variant">Arquivo .json estruturado</p>
                   </div>
                 </button>
               </div>
@@ -362,17 +362,17 @@ export default function TransactionsPage() {
           </div>
           <button
             onClick={exportCSV}
-            className="flex items-center gap-2 bg-[#0c0c0f] border border-[#27272a] px-3 py-2 rounded-lg hover:bg-[#18181b] active:scale-95 transition-all"
+            className="flex items-center gap-2 bg-surface border border-outline-variant px-3 py-2 rounded-lg hover:bg-surface-variant active:scale-95 transition-all"
           >
-            <span className="material-symbols-outlined text-[#a1a1aa] text-lg">download</span>
-            <span className="text-sm font-medium text-[#fafafa]">Exportar</span>
+            <span className="material-symbols-outlined text-on-surface-variant text-lg">download</span>
+            <span className="text-sm font-medium text-on-surface">Exportar</span>
           </button>
           <button
             onClick={() => {
               setEditingId(null)
               setShowForm(true)
             }}
-            className="flex items-center gap-2 bg-[#a78bfa] text-[#0a0012] px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 active:scale-95 transition-all"
+            className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary/90 active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-base">add</span>
             Nova Transação
@@ -384,54 +384,54 @@ export default function TransactionsPage() {
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[#a1a1aa] text-base">
+            <span className="material-symbols-outlined text-on-surface-variant text-base">
               account_balance_wallet
             </span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Saldo Total</p>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Saldo Total</p>
           </div>
-          <p className="text-2xl font-black text-[#fafafa]">{fmt(Number(balance?.balance ?? 0))}</p>
-          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
+          <p className="text-2xl font-black text-on-surface">{fmt(Number(balance?.balance ?? 0))}</p>
+          <p className="text-xs text-secondary mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[#34d399] text-base">trending_up</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Receitas</p>
+            <span className="material-symbols-outlined text-tertiary text-base">trending_up</span>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Receitas</p>
           </div>
-          <p className="text-2xl font-black text-[#34d399]">{fmt(incomeMonth)}</p>
-          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
+          <p className="text-2xl font-black text-tertiary">{fmt(incomeMonth)}</p>
+          <p className="text-xs text-secondary mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
-            <span className="material-symbols-outlined text-[#ef4444] text-base">trending_down</span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Despesas</p>
+            <span className="material-symbols-outlined text-error text-base">trending_down</span>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Despesas</p>
           </div>
-          <p className="text-2xl font-black text-[#ef4444]">{fmt(expenseMonth)}</p>
-          <p className="text-xs text-[#71717a] mt-1">{periodLabel}</p>
+          <p className="text-2xl font-black text-error">{fmt(expenseMonth)}</p>
+          <p className="text-xs text-secondary mt-1">{periodLabel}</p>
         </div>
         <div className={cardClass}>
           <div className="flex items-center gap-2 mb-2">
             <span
               className={`material-symbols-outlined text-base ${
-                monthResult >= 0 ? 'text-[#a78bfa]' : 'text-[#ef4444]'
+                monthResult >= 0 ? 'text-primary' : 'text-error'
               }`}
             >
               {monthResult >= 0 ? 'savings' : 'warning'}
             </span>
-            <p className="text-[10px] uppercase tracking-widest text-[#a1a1aa]">Resultado</p>
+            <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">Resultado</p>
           </div>
           <p
             className={`text-2xl font-black ${
-              monthResult >= 0 ? 'text-[#a78bfa]' : 'text-[#ef4444]'
+              monthResult >= 0 ? 'text-primary' : 'text-error'
             }`}
           >
             {fmt(monthResult)}
           </p>
-          <p className="text-xs text-[#71717a] mt-1">Receitas − Despesas</p>
+          <p className="text-xs text-secondary mt-1">Receitas − Despesas</p>
         </div>
       </section>
 
       {/* Filters */}
-      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-lg p-4 flex flex-wrap items-center gap-3">
+      <section className="bg-surface border border-outline-variant rounded-lg p-4 flex flex-wrap items-center gap-3">
         <div className="flex gap-2">
           <button
             onClick={() => {
@@ -461,7 +461,7 @@ export default function TransactionsPage() {
             Despesas
           </button>
         </div>
-        <div className="h-6 w-px bg-[#27272a] mx-1 hidden md:block" />
+        <div className="h-6 w-px bg-outline-variant mx-1 hidden md:block" />
 
         {/* Period mode selector */}
         <select
@@ -512,7 +512,7 @@ export default function TransactionsPage() {
             className={inputClass}
           >
             {Array.from({ length: 7 }, (_, i) => now.getFullYear() - 5 + i).map((y) => (
-              <option key={y} value={String(y)} className="bg-[#09090b]">
+              <option key={y} value={String(y)} className="bg-bg">
                 {y}
               </option>
             ))}
@@ -529,7 +529,7 @@ export default function TransactionsPage() {
               }}
               className={inputClass}
             />
-            <span className="text-[#a1a1aa] text-sm">até</span>
+            <span className="text-on-surface-variant text-sm">até</span>
             <input
               type="date"
               value={customEnd}
@@ -543,7 +543,7 @@ export default function TransactionsPage() {
         )}
 
         {periodMode !== 'all' && startDate && endDate && (
-          <span className="text-[10px] uppercase tracking-widest text-[#71717a] hidden lg:inline">
+          <span className="text-[10px] uppercase tracking-widest text-secondary hidden lg:inline">
             {fmtDate(startDate)} → {fmtDate(endDate)}
           </span>
         )}
@@ -558,7 +558,7 @@ export default function TransactionsPage() {
         >
           <option value="">Todas categorias</option>
           {categories?.map((c) => (
-            <option key={c.id} value={c.id} className="bg-[#09090b]">
+            <option key={c.id} value={c.id} className="bg-bg">
               {c.icon} {c.name}
             </option>
           ))}
@@ -566,14 +566,14 @@ export default function TransactionsPage() {
       </section>
 
       {/* Table */}
-      <section className="bg-[#0c0c0f] border border-[#27272a] rounded-lg overflow-hidden">
+      <section className="bg-surface border border-outline-variant rounded-lg overflow-hidden">
         {isLoading ? (
-          <div className="text-center py-16 text-[#a1a1aa] text-sm">Carregando…</div>
+          <div className="text-center py-16 text-on-surface-variant text-sm">Carregando…</div>
         ) : data && data.items.length > 0 ? (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-[#121215] text-[#a1a1aa] uppercase text-[10px] tracking-widest">
+                <thead className="bg-surface-container text-on-surface-variant uppercase text-[10px] tracking-widest">
                   <tr>
                     <th className="px-6 py-3 font-medium">Data</th>
                     <th className="px-6 py-3 font-medium">Descrição</th>
@@ -582,7 +582,7 @@ export default function TransactionsPage() {
                     <th className="px-6 py-3 font-medium text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#27272a]">
+                <tbody className="divide-y divide-outline-variant">
                   {data.items.map((t) => (
                     <TransactionRow
                       key={t.id}
@@ -598,25 +598,25 @@ export default function TransactionsPage() {
               </table>
             </div>
             {totalPages > 1 && (
-              <div className="px-6 py-4 border-t border-[#27272a] flex justify-between items-center">
-                <p className="text-xs text-[#a1a1aa]">
+              <div className="px-6 py-4 border-t border-outline-variant flex justify-between items-center">
+                <p className="text-xs text-on-surface-variant">
                   {data.total} {data.total === 1 ? 'transação' : 'transações'}
                 </p>
                 <div className="flex gap-2 items-center">
                   <button
                     disabled={page === 1}
                     onClick={() => setPage(page - 1)}
-                    className="px-3 py-1.5 rounded border border-[#27272a] text-xs text-[#a1a1aa] disabled:opacity-30 hover:bg-[#18181b]"
+                    className="px-3 py-1.5 rounded border border-outline-variant text-xs text-on-surface-variant disabled:opacity-30 hover:bg-surface-variant"
                   >
                     Anterior
                   </button>
-                  <span className="text-xs text-[#a1a1aa]">
+                  <span className="text-xs text-on-surface-variant">
                     {page} / {totalPages}
                   </span>
                   <button
                     disabled={page === totalPages}
                     onClick={() => setPage(page + 1)}
-                    className="px-3 py-1.5 rounded border border-[#27272a] text-xs text-[#a1a1aa] disabled:opacity-30 hover:bg-[#18181b]"
+                    className="px-3 py-1.5 rounded border border-outline-variant text-xs text-on-surface-variant disabled:opacity-30 hover:bg-surface-variant"
                   >
                     Próxima
                   </button>
@@ -625,7 +625,7 @@ export default function TransactionsPage() {
             )}
           </>
         ) : (
-          <div className="py-16 text-center text-[#a1a1aa] text-sm">Nenhuma transação encontrada.</div>
+          <div className="py-16 text-center text-on-surface-variant text-sm">Nenhuma transação encontrada.</div>
         )}
       </section>
 
@@ -679,18 +679,18 @@ function TransactionRow({
   const isInstallment = tx.source?.startsWith('installment_')
   const isIncome = tx.type === 'income'
   return (
-    <tr className="hover:bg-[#18181b]/50 transition-colors">
-      <td className="px-6 py-4 text-[#fafafa] whitespace-nowrap">{fmtDate(tx.date)}</td>
+    <tr className="hover:bg-surface-variant/50 transition-colors">
+      <td className="px-6 py-4 text-on-surface whitespace-nowrap">{fmtDate(tx.date)}</td>
       <td className="px-6 py-4">
         <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-[#a1a1aa] text-base">
+          <span className="material-symbols-outlined text-on-surface-variant text-base">
             {tx.icon || 'receipt_long'}
           </span>
-          <span className="text-[#fafafa]">{tx.description}</span>
+          <span className="text-on-surface">{tx.description}</span>
           {isAuto && (
             <span
               title="Gerado automaticamente a partir do Rendimentos"
-              className="px-2 py-0.5 rounded-full bg-[#a78bfa]/15 border border-[#a78bfa]/30 text-[#a78bfa] text-[10px] font-bold uppercase tracking-wider"
+              className="px-2 py-0.5 rounded-full bg-primary/15 border border-primary/30 text-primary text-[10px] font-bold uppercase tracking-wider"
             >
               auto
             </span>
@@ -715,16 +715,16 @@ function TransactionRow({
       </td>
       <td className="px-6 py-4">
         {tx.category ? (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#27272a] text-[#a1a1aa] text-xs">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-outline-variant text-on-surface-variant text-xs">
             {tx.category.icon} {tx.category.name}
           </span>
         ) : (
-          <span className="text-xs text-[#71717a]">—</span>
+          <span className="text-xs text-secondary">—</span>
         )}
       </td>
       <td
         className={`px-6 py-4 text-right font-bold whitespace-nowrap ${
-          isIncome ? 'text-[#34d399]' : 'text-[#ef4444]'
+          isIncome ? 'text-tertiary' : 'text-error'
         }`}
       >
         {isIncome ? '+ ' : '- '}
@@ -735,7 +735,7 @@ function TransactionRow({
           {isAuto || isFixed || isInstallment ? (
             <span
               title="Transação automática — gerencie pelo cadastro original"
-              className="text-[#71717a] cursor-not-allowed"
+              className="text-secondary cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-lg">lock</span>
             </span>
@@ -743,14 +743,14 @@ function TransactionRow({
             <>
               <button
                 onClick={onEdit}
-                className="text-[#a1a1aa] hover:text-[#a78bfa] transition-colors"
+                className="text-on-surface-variant hover:text-primary transition-colors"
                 aria-label="Editar"
               >
                 <span className="material-symbols-outlined text-lg">edit</span>
               </button>
               <button
                 onClick={onDelete}
-                className="text-[#a1a1aa] hover:text-[#ef4444] transition-colors"
+                className="text-on-surface-variant hover:text-error transition-colors"
                 aria-label="Excluir"
               >
                 <span className="material-symbols-outlined text-lg">delete</span>
@@ -856,20 +856,20 @@ function ImportModal({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-modal-title"
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        className="bg-surface border border-outline-variant rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+        <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
           <div>
-            <h3 id="import-modal-title" className="text-lg font-bold text-[#fafafa]">Importar Extrato Bancário</h3>
-            <p className="text-xs text-[#a1a1aa]">
+            <h3 id="import-modal-title" className="text-lg font-bold text-on-surface">Importar Extrato Bancário</h3>
+            <p className="text-xs text-on-surface-variant">
               Receitas (salário, reembolsos) são ignoradas — use a tela de Rendimentos para isso.
             </p>
           </div>
           <button
             onClick={onClose}
             aria-label="Fechar"
-            className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]"
+            className="material-symbols-outlined text-on-surface-variant hover:text-on-surface"
           >
             close
           </button>
@@ -889,15 +889,15 @@ function ImportModal({ onClose }: { onClose: () => void }) {
                 handleFiles(e.dataTransfer.files)
               }}
               className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
-                dragOver ? 'border-[#a78bfa] bg-[#a78bfa]/5' : 'border-[#27272a] bg-[#09090b]'
+                dragOver ? 'border-primary bg-primary/5' : 'border-outline-variant bg-bg'
               }`}
             >
-              <span className="material-symbols-outlined text-5xl text-[#a1a1aa] mb-3 block">
+              <span className="material-symbols-outlined text-5xl text-on-surface-variant mb-3 block">
                 upload_file
               </span>
-              <p className="text-[#fafafa] mb-2">Arraste seu extrato bancário aqui</p>
-              <p className="text-xs text-[#a1a1aa] mb-4">Formatos aceitos: CSV, PDF</p>
-              <label className="inline-block bg-[#a78bfa] text-[#0a0012] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 cursor-pointer transition-colors">
+              <p className="text-on-surface mb-2">Arraste seu extrato bancário aqui</p>
+              <p className="text-xs text-on-surface-variant mb-4">Formatos aceitos: CSV, PDF</p>
+              <label className="inline-block bg-primary text-on-primary px-6 py-2 rounded-lg text-sm font-bold hover:bg-primary/90 cursor-pointer transition-colors">
                 Escolher arquivo
                 <input
                   type="file"
@@ -907,21 +907,21 @@ function ImportModal({ onClose }: { onClose: () => void }) {
                 />
               </label>
               {uploadMut.isPending && (
-                <p className="mt-3 text-sm text-[#a78bfa]">Enviando…</p>
+                <p className="mt-3 text-sm text-primary">Enviando…</p>
               )}
             </div>
           )}
 
           {activeImport && status === 'pending' && (
-            <div className="bg-[#09090b] border border-[#27272a] rounded-lg p-6 flex items-center justify-between">
+            <div className="bg-bg border border-outline-variant rounded-lg p-6 flex items-center justify-between">
               <div>
-                <p className="font-medium text-[#fafafa]">{activeImport.filename}</p>
-                <p className="text-sm text-[#a1a1aa]">Pronto para processar com IA.</p>
+                <p className="font-medium text-on-surface">{activeImport.filename}</p>
+                <p className="text-sm text-on-surface-variant">Pronto para processar com IA.</p>
               </div>
               <button
                 onClick={() => processMut.mutate(activeImportId!)}
                 disabled={processMut.isPending}
-                className="bg-[#a78bfa] text-[#0a0012] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 disabled:opacity-50 transition-colors"
+                className="bg-primary text-on-primary px-6 py-2 rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {processMut.isPending ? 'Processando…' : 'Processar com IA'}
               </button>
@@ -929,29 +929,29 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           )}
 
           {status === 'processing' && (
-            <div className="bg-[#a78bfa]/5 border border-[#a78bfa]/20 rounded-lg p-6 text-center">
-              <p className="text-[#a78bfa] font-medium">Processando com IA…</p>
-              <p className="text-sm text-[#a1a1aa]">Isso pode levar alguns segundos</p>
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-6 text-center">
+              <p className="text-primary font-medium">Processando com IA…</p>
+              <p className="text-sm text-on-surface-variant">Isso pode levar alguns segundos</p>
             </div>
           )}
 
           {status === 'failed' && (
-            <div className="bg-[#ef4444]/5 border border-[#ef4444]/20 rounded-lg p-6">
-              <p className="text-[#ef4444] font-medium">Erro no processamento</p>
-              <p className="text-sm text-[#a1a1aa]">{activeImport?.error_message}</p>
+            <div className="bg-error/5 border border-error/20 rounded-lg p-6">
+              <p className="text-error font-medium">Erro no processamento</p>
+              <p className="text-sm text-on-surface-variant">{activeImport?.error_message}</p>
             </div>
           )}
 
           {status === 'review' && staged && !confirmResult && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-[#fafafa]">
+                <h3 className="font-bold text-on-surface">
                   Revisar ({staged.length} transações)
                 </h3>
                 <button
                   onClick={() => confirmMut.mutate(activeImportId!)}
                   disabled={confirmMut.isPending}
-                  className="bg-[#34d399] text-[#001a12] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#34d399]/90 disabled:opacity-50 transition-colors"
+                  className="bg-tertiary text-on-tertiary px-6 py-2 rounded-lg text-sm font-bold hover:bg-tertiary/90 disabled:opacity-50 transition-colors"
                 >
                   {confirmMut.isPending ? 'Confirmando…' : 'Confirmar Importação'}
                 </button>
@@ -965,12 +965,12 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           )}
 
           {confirmResult && (
-            <div className="bg-[#34d399]/5 border border-[#34d399]/20 rounded-lg p-6 text-center space-y-3">
-              <span className="material-symbols-outlined text-[#34d399] text-5xl block">
+            <div className="bg-tertiary/5 border border-tertiary/20 rounded-lg p-6 text-center space-y-3">
+              <span className="material-symbols-outlined text-tertiary text-5xl block">
                 check_circle
               </span>
-              <p className="text-[#fafafa] font-bold text-lg">Importação concluída</p>
-              <p className="text-sm text-[#a1a1aa]">
+              <p className="text-on-surface font-bold text-lg">Importação concluída</p>
+              <p className="text-sm text-on-surface-variant">
                 {confirmResult.created} despesas importadas.
                 {confirmResult.skipped_income > 0 && (
                   <>
@@ -982,13 +982,13 @@ function ImportModal({ onClose }: { onClose: () => void }) {
               <div className="flex gap-2 justify-center pt-2">
                 <button
                   onClick={reset}
-                  className="px-4 py-2 border border-[#27272a] text-[#a1a1aa] rounded-lg text-sm font-medium hover:bg-[#18181b]"
+                  className="px-4 py-2 border border-outline-variant text-on-surface-variant rounded-lg text-sm font-medium hover:bg-surface-variant"
                 >
                   Importar outro
                 </button>
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 bg-[#a78bfa] text-[#0a0012] rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90"
+                  className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90"
                 >
                   Fechar
                 </button>
@@ -1060,17 +1060,17 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="json-import-title"
-        className="bg-[#0c0c0f] border border-[#27272a] rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        className="bg-surface border border-outline-variant rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#27272a] flex justify-between items-center">
+        <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center">
           <div>
-            <h3 id="json-import-title" className="text-lg font-bold text-[#fafafa]">Importar JSON</h3>
-            <p className="text-xs text-[#a1a1aa]">
+            <h3 id="json-import-title" className="text-lg font-bold text-on-surface">Importar JSON</h3>
+            <p className="text-xs text-on-surface-variant">
               Formato esperado: array com objetos contendo date, description, amount, type (optional).
             </p>
           </div>
-          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-[#a1a1aa] hover:text-[#fafafa]">
+          <button onClick={onClose} aria-label="Fechar" className="material-symbols-outlined text-on-surface-variant hover:text-on-surface">
             close
           </button>
         </div>
@@ -1079,7 +1079,7 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
           {!result && (
             <>
               <div className="flex gap-3 items-center">
-                <label className="inline-block bg-[#a78bfa] text-[#0a0012] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 cursor-pointer transition-colors">
+                <label className="inline-block bg-primary text-on-primary px-6 py-2 rounded-lg text-sm font-bold hover:bg-primary/90 cursor-pointer transition-colors">
                   Escolher arquivo .json
                   <input
                     ref={fileRef}
@@ -1089,21 +1089,21 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
                     onChange={(e) => handleFile(e.target.files)}
                   />
                 </label>
-                {fileName && <span className="text-sm text-[#a1a1aa]">{fileName}</span>}
+                {fileName && <span className="text-sm text-on-surface-variant">{fileName}</span>}
               </div>
 
               {error && (
-                <div className="bg-[#ef4444]/5 border border-[#ef4444]/20 rounded-lg p-4">
-                  <p className="text-sm text-[#ef4444]">{error}</p>
+                <div className="bg-error/5 border border-error/20 rounded-lg p-4">
+                  <p className="text-sm text-error">{error}</p>
                 </div>
               )}
 
               {jsonData && (
                 <div className="space-y-4">
-                  <p className="text-sm text-[#a1a1aa]">{jsonData.length} transações encontradas no arquivo.</p>
-                  <div className="max-h-60 overflow-y-auto bg-[#09090b] border border-[#27272a] rounded-lg">
+                  <p className="text-sm text-on-surface-variant">{jsonData.length} transações encontradas no arquivo.</p>
+                  <div className="max-h-60 overflow-y-auto bg-bg border border-outline-variant rounded-lg">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-[#121215] text-[#a1a1aa] uppercase text-[10px] tracking-widest sticky top-0">
+                      <thead className="bg-surface-container text-on-surface-variant uppercase text-[10px] tracking-widest sticky top-0">
                         <tr>
                           <th className="px-4 py-2">Data</th>
                           <th className="px-4 py-2">Descrição</th>
@@ -1111,19 +1111,19 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
                           <th className="px-4 py-2">Tipo</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-[#27272a]">
+                      <tbody className="divide-y divide-outline-variant">
                         {jsonData.slice(0, 50).map((row, i) => (
                           <tr key={i}>
-                            <td className="px-4 py-2 text-[#fafafa]">{String(row.date ?? '')}</td>
-                            <td className="px-4 py-2 text-[#fafafa]">{String(row.description ?? '')}</td>
-                            <td className="px-4 py-2 text-right text-[#fafafa]">{String(row.amount ?? '')}</td>
-                            <td className="px-4 py-2 text-[#a1a1aa]">{String(row.type ?? 'expense')}</td>
+                            <td className="px-4 py-2 text-on-surface">{String(row.date ?? '')}</td>
+                            <td className="px-4 py-2 text-on-surface">{String(row.description ?? '')}</td>
+                            <td className="px-4 py-2 text-right text-on-surface">{String(row.amount ?? '')}</td>
+                            <td className="px-4 py-2 text-on-surface-variant">{String(row.type ?? 'expense')}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     {jsonData.length > 50 && (
-                      <p className="text-center text-xs text-[#71717a] py-2">
+                      <p className="text-center text-xs text-secondary py-2">
                         …e mais {jsonData.length - 50} linhas
                       </p>
                     )}
@@ -1131,7 +1131,7 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
                   <button
                     onClick={() => importMut.mutate(jsonData)}
                     disabled={importMut.isPending}
-                    className="bg-[#34d399] text-[#001a12] px-6 py-2 rounded-lg text-sm font-bold hover:bg-[#34d399]/90 disabled:opacity-50 transition-colors"
+                    className="bg-tertiary text-on-tertiary px-6 py-2 rounded-lg text-sm font-bold hover:bg-tertiary/90 disabled:opacity-50 transition-colors"
                   >
                     {importMut.isPending ? 'Importando…' : `Importar ${jsonData.length} transações`}
                   </button>
@@ -1141,23 +1141,23 @@ function JsonImportModal({ onClose }: { onClose: () => void }) {
           )}
 
           {result && (
-            <div className="bg-[#34d399]/5 border border-[#34d399]/20 rounded-lg p-6 text-center space-y-3">
-              <span className="material-symbols-outlined text-[#34d399] text-5xl block">
+            <div className="bg-tertiary/5 border border-tertiary/20 rounded-lg p-6 text-center space-y-3">
+              <span className="material-symbols-outlined text-tertiary text-5xl block">
                 check_circle
               </span>
-              <p className="text-[#fafafa] font-bold text-lg">Importação concluída</p>
-              <p className="text-sm text-[#a1a1aa]">{result.created} transações importadas.</p>
+              <p className="text-on-surface font-bold text-lg">Importação concluída</p>
+              <p className="text-sm text-on-surface-variant">{result.created} transações importadas.</p>
               {result.errors.length > 0 && (
-                <div className="text-left bg-[#ef4444]/5 border border-[#ef4444]/20 rounded-lg p-3 mt-2">
-                  <p className="text-xs text-[#ef4444] font-medium mb-1">Erros:</p>
+                <div className="text-left bg-error/5 border border-error/20 rounded-lg p-3 mt-2">
+                  <p className="text-xs text-error font-medium mb-1">Erros:</p>
                   {result.errors.map((e, i) => (
-                    <p key={i} className="text-xs text-[#a1a1aa]">{e}</p>
+                    <p key={i} className="text-xs text-on-surface-variant">{e}</p>
                   ))}
                 </div>
               )}
               <button
                 onClick={onClose}
-                className="px-4 py-2 bg-[#a78bfa] text-[#0a0012] rounded-lg text-sm font-bold hover:bg-[#a78bfa]/90 mt-2"
+                className="px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90 mt-2"
               >
                 Fechar
               </button>
