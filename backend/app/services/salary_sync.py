@@ -141,26 +141,28 @@ def compute_monthly_summary(
     )
 
 
-async def _ensure_salary_category(db: AsyncSession) -> Category:
+async def _ensure_salary_category(db: AsyncSession, user_id: int) -> Category:
     result = await db.execute(
-        select(Category).where(Category.name == SALARY_CATEGORY_NAME, Category.type == "income")
+        select(Category).where(
+            Category.user_id == user_id,
+            Category.name == SALARY_CATEGORY_NAME,
+            Category.type == "income",
+        )
     )
     cat = result.scalar_one_or_none()
     if cat:
         return cat
-    cat = Category(name=SALARY_CATEGORY_NAME, type="income", icon="payments")
+    cat = Category(user_id=user_id, name=SALARY_CATEGORY_NAME, type="income", icon="payments")
     db.add(cat)
     await db.flush()
     return cat
 
 
-async def _find_auto_transaction(db: AsyncSession, month: int, year: int) -> Transaction | None:
-    """Locate the auto-generated salary transaction for a given (month, year)."""
-    # Day 5 is the canonical date for the auto entry; match on the exact date
-    # to avoid colliding with manual income entries the user may add.
+async def _find_auto_transaction(db: AsyncSession, user_id: int, month: int, year: int) -> Transaction | None:
     target_date = date(year, month, 5)
     result = await db.execute(
         select(Transaction).where(
+            Transaction.user_id == user_id,
             Transaction.source == SALARY_AUTO_SOURCE,
             Transaction.date == target_date,
         )
@@ -168,35 +170,30 @@ async def _find_auto_transaction(db: AsyncSession, month: int, year: int) -> Tra
     return result.scalar_one_or_none()
 
 
-async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> None:
-    """Upsert (or delete) the auto-generated salary transaction for the period.
-
-    Reads the latest SalaryConfig and all MonthlyEntries for the period, computes
-    the net salary via :func:`compute_monthly_summary`, then writes a single
-    Transaction row tagged with ``source="salary_auto"``.
-    """
-    # Try per-month config first
+async def sync_salary_transaction(db: AsyncSession, user_id: int, month: int, year: int) -> None:
+    """Upsert (or delete) the auto-generated salary transaction for the period."""
     config_result = await db.execute(
         select(SalaryConfig).where(
+            SalaryConfig.user_id == user_id,
             SalaryConfig.reference_month == month,
             SalaryConfig.reference_year == year,
         )
     )
     config = config_result.scalar_one_or_none()
     if not config:
-        # Fall back to global (null month/year) or latest
         config_result = await db.execute(
             select(SalaryConfig)
-            .where(SalaryConfig.reference_month.is_(None))
+            .where(SalaryConfig.user_id == user_id, SalaryConfig.reference_month.is_(None))
             .order_by(SalaryConfig.id.desc())
             .limit(1)
         )
         config = config_result.scalar_one_or_none()
     if not config:
-        return  # nothing to sync
+        return
 
     entries_result = await db.execute(
         select(MonthlyEntry).where(
+            MonthlyEntry.user_id == user_id,
             MonthlyEntry.reference_month == month,
             MonthlyEntry.reference_year == year,
         )
@@ -204,7 +201,7 @@ async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> No
     entries = entries_result.scalars().all()
 
     summary = compute_monthly_summary(config, entries, month, year)
-    existing = await _find_auto_transaction(db, month, year)
+    existing = await _find_auto_transaction(db, user_id, month, year)
 
     if summary.net_salary <= 0:
         if existing:
@@ -218,8 +215,9 @@ async def sync_salary_transaction(db: AsyncSession, month: int, year: int) -> No
         await db.commit()
         return
 
-    category = await _ensure_salary_category(db)
+    category = await _ensure_salary_category(db, user_id)
     tx = Transaction(
+        user_id=user_id,
         date=date(year, month, 5),
         description=f"Salário líquido {month:02d}/{year}",
         amount=summary.net_salary,

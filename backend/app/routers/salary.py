@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import SalaryConfig, Discount, OvertimeEntry
+from app.dependencies import get_current_user
+from app.models import SalaryConfig, Discount, OvertimeEntry, User
 from app.schemas import (
     SalaryConfigCreate,
     SalaryConfigUpdate,
@@ -23,10 +24,11 @@ from app.services.salary_sync import sync_salary_transaction
 router = APIRouter()
 
 
-async def get_or_404(db: AsyncSession) -> SalaryConfig:
+async def get_or_404(db: AsyncSession, user_id: int) -> SalaryConfig:
     result = await db.execute(
         select(SalaryConfig)
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
+        .where(SalaryConfig.user_id == user_id)
         .order_by(SalaryConfig.id.desc())
         .limit(1)
     )
@@ -36,29 +38,33 @@ async def get_or_404(db: AsyncSession) -> SalaryConfig:
     return config
 
 
-# --- Salary Config ---
-
 @router.get("/config", response_model=SalaryConfigOut | None)
 async def get_salary_config(
     month: int | None = Query(None, ge=1, le=12),
     year: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if month is not None and year is not None:
-        # Try per-month config first
         result = await db.execute(
             select(SalaryConfig)
             .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-            .where(SalaryConfig.reference_month == month, SalaryConfig.reference_year == year)
+            .where(
+                SalaryConfig.user_id == current_user.id,
+                SalaryConfig.reference_month == month,
+                SalaryConfig.reference_year == year,
+            )
         )
         config = result.scalar_one_or_none()
         if config:
             return config
-    # Fall back to global (null month/year) or latest
     result = await db.execute(
         select(SalaryConfig)
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-        .where(SalaryConfig.reference_month.is_(None))
+        .where(
+            SalaryConfig.user_id == current_user.id,
+            SalaryConfig.reference_month.is_(None),
+        )
         .order_by(SalaryConfig.id.desc())
         .limit(1)
     )
@@ -66,25 +72,33 @@ async def get_salary_config(
 
 
 @router.post("/config", response_model=SalaryConfigOut)
-async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depends(get_db)):
-    # Determine if this is a per-month or global config
+async def create_salary_config(
+    data: SalaryConfigCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     ref_month = data.reference_month
     ref_year = data.reference_year
 
     if ref_month is not None and ref_year is not None:
-        # Upsert per-month config
         result = await db.execute(
             select(SalaryConfig)
             .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-            .where(SalaryConfig.reference_month == ref_month, SalaryConfig.reference_year == ref_year)
+            .where(
+                SalaryConfig.user_id == current_user.id,
+                SalaryConfig.reference_month == ref_month,
+                SalaryConfig.reference_year == ref_year,
+            )
         )
         config = result.scalar_one_or_none()
     else:
-        # Upsert global config (legacy behavior)
         result = await db.execute(
             select(SalaryConfig)
             .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-            .where(SalaryConfig.reference_month.is_(None))
+            .where(
+                SalaryConfig.user_id == current_user.id,
+                SalaryConfig.reference_month.is_(None),
+            )
             .order_by(SalaryConfig.id.desc())
             .limit(1)
         )
@@ -102,6 +116,7 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
         config.coparticipation = data.coparticipation
     else:
         config = SalaryConfig(
+            user_id=current_user.id,
             base_salary=data.base_salary,
             overtime_hour_rate=data.overtime_hour_rate,
             meal_allowance=data.meal_allowance,
@@ -117,19 +132,17 @@ async def create_salary_config(data: SalaryConfigCreate, db: AsyncSession = Depe
         db.add(config)
     await db.commit()
     await db.refresh(config)
-    # Reload with relations
     result = await db.execute(
         select(SalaryConfig)
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
         .where(SalaryConfig.id == config.id)
     )
     out = result.scalar_one()
-    # Sync using the provided month/year or today's
     if ref_month is not None and ref_year is not None:
-        await sync_salary_transaction(db, ref_month, ref_year)
+        await sync_salary_transaction(db, current_user.id, ref_month, ref_year)
     else:
         today = DateCls.today()
-        await sync_salary_transaction(db, today.month, today.year)
+        await sync_salary_transaction(db, current_user.id, today.month, today.year)
     return out
 
 
@@ -139,19 +152,23 @@ async def update_salary_config(
     month: int | None = Query(None, ge=1, le=12),
     year: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if month is not None and year is not None:
-        # Find per-month config
         result = await db.execute(
             select(SalaryConfig)
             .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-            .where(SalaryConfig.reference_month == month, SalaryConfig.reference_year == year)
+            .where(
+                SalaryConfig.user_id == current_user.id,
+                SalaryConfig.reference_month == month,
+                SalaryConfig.reference_year == year,
+            )
         )
         config = result.scalar_one_or_none()
         if not config:
             raise HTTPException(status_code=404, detail="Salary config not found for this month/year")
     else:
-        config = await get_or_404(db)
+        config = await get_or_404(db, current_user.id)
 
     if data.base_salary is not None:
         config.base_salary = data.base_salary
@@ -179,20 +196,21 @@ async def update_salary_config(
         .where(SalaryConfig.id == config.id)
     )
     out = result.scalar_one()
-    # Sync using the provided month/year or today's
     if month is not None and year is not None:
-        await sync_salary_transaction(db, month, year)
+        await sync_salary_transaction(db, current_user.id, month, year)
     else:
         today = DateCls.today()
-        await sync_salary_transaction(db, today.month, today.year)
+        await sync_salary_transaction(db, current_user.id, today.month, today.year)
     return out
 
 
-# --- Discounts ---
-
 @router.post("/discounts", response_model=DiscountOut)
-async def add_discount(data: DiscountCreate, db: AsyncSession = Depends(get_db)):
-    config = await get_or_404(db)
+async def add_discount(
+    data: DiscountCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    config = await get_or_404(db, current_user.id)
     discount = Discount(
         salary_config_id=config.id,
         name=data.name,
@@ -206,8 +224,16 @@ async def add_discount(data: DiscountCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.delete("/discounts/{discount_id}")
-async def remove_discount(discount_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Discount).where(Discount.id == discount_id))
+async def remove_discount(
+    discount_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Discount)
+        .join(SalaryConfig, SalaryConfig.id == Discount.salary_config_id)
+        .where(Discount.id == discount_id, SalaryConfig.user_id == current_user.id)
+    )
     discount = result.scalar_one_or_none()
     if not discount:
         raise HTTPException(status_code=404, detail="Discount not found")
@@ -216,11 +242,13 @@ async def remove_discount(discount_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
-# --- Overtime ---
-
 @router.post("/overtime", response_model=OvertimeEntryOut)
-async def add_overtime(data: OvertimeEntryCreate, db: AsyncSession = Depends(get_db)):
-    config = await get_or_404(db)
+async def add_overtime(
+    data: OvertimeEntryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    config = await get_or_404(db, current_user.id)
     entry = OvertimeEntry(
         salary_config_id=config.id,
         month=data.month,
@@ -235,8 +263,16 @@ async def add_overtime(data: OvertimeEntryCreate, db: AsyncSession = Depends(get
 
 
 @router.delete("/overtime/{entry_id}")
-async def remove_overtime(entry_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(OvertimeEntry).where(OvertimeEntry.id == entry_id))
+async def remove_overtime(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(OvertimeEntry)
+        .join(SalaryConfig, SalaryConfig.id == OvertimeEntry.salary_config_id)
+        .where(OvertimeEntry.id == entry_id, SalaryConfig.user_id == current_user.id)
+    )
     entry = result.scalar_one_or_none()
     if not entry:
         raise HTTPException(status_code=404, detail="Overtime entry not found")
@@ -245,19 +281,17 @@ async def remove_overtime(entry_id: int, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
-# --- Calculation ---
-
 @router.get("/calculate", response_model=SalaryCalculationOut)
 async def calculate_salary(
     month: int = Query(..., ge=1, le=12),
     year: int = Query(...),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    config = await get_or_404(db)
+    config = await get_or_404(db, current_user.id)
     base = config.base_salary
     hour_rate = config.overtime_hour_rate
 
-    # Get overtime entries for this month
     result = await db.execute(
         select(OvertimeEntry).where(
             and_(
@@ -284,7 +318,6 @@ async def calculate_salary(
 
     gross_salary = base + overtime_total
 
-    # Calculate discounts
     discount_details = []
     discounts_total = Decimal("0")
     for d in config.discounts:

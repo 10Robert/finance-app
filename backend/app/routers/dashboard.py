@@ -3,12 +3,13 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, case, extract, text
+from sqlalchemy import select, func, case, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Transaction, Category
+from app.dependencies import get_current_user
+from app.models import Transaction, Category, User
 from app.schemas import (
     DashboardSummary,
     BalanceOut,
@@ -70,7 +71,6 @@ def _get_year_range(year: int):
     return date(year, 1, 1), date(year, 12, 31)
 
 
-# GET /api/dashboard/balance
 @router.get("/balance", response_model=BalanceOut)
 async def get_balance(
     year: int = Query(None),
@@ -78,9 +78,9 @@ async def get_balance(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if start_date and end_date:
-        # Custom date range — use directly
         start, end = start_date, end_date
         delta = (end_date - start_date).days
         prev_end = start_date - timedelta(days=1)
@@ -95,7 +95,6 @@ async def get_balance(
         start, end = _get_year_range(year)
         prev_start, prev_end = _get_year_range(year - 1)
     else:
-        # Default to current month
         today = date.today()
         year = today.year
         month = today.month
@@ -109,7 +108,11 @@ async def get_balance(
         q = select(
             func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("inc"),
             func.coalesce(func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))), 0).label("exp"),
-        ).where(Transaction.date >= s, Transaction.date <= e)
+        ).where(
+            Transaction.user_id == current_user.id,
+            Transaction.date >= s,
+            Transaction.date <= e,
+        )
         return (await db.execute(q)).one()
 
     current = await _sum_period(start, end)
@@ -130,12 +133,12 @@ async def get_balance(
     )
 
 
-# GET /api/dashboard/monthly-revenue
 @router.get("/monthly-revenue", response_model=MonthlyRevenueOut)
 async def get_monthly_revenue(
     year: int = Query(...),
     month: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if month:
         start, end = _get_month_range(year, month)
@@ -144,25 +147,24 @@ async def get_monthly_revenue(
 
     q = select(
         func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("revenue"),
-    ).where(Transaction.date >= start, Transaction.date <= end)
+    ).where(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= start,
+        Transaction.date <= end,
+    )
     result = (await db.execute(q)).one()
 
-    return MonthlyRevenueOut(
-        revenue=result.revenue,
-        goal=None,
-        goal_percent=None,
-    )
+    return MonthlyRevenueOut(revenue=result.revenue, goal=None, goal_percent=None)
 
 
-# GET /api/dashboard/spending-flow
 @router.get("/spending-flow", response_model=SpendingFlowOut)
 async def get_spending_flow(
     year: int = Query(...),
     month: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if month:
-        # Monthly: group by week segments
         start, end = _get_month_range(year, month)
         q = (
             select(
@@ -171,6 +173,7 @@ async def get_spending_flow(
                 func.sum(func.abs(Transaction.amount)).label("amount"),
             )
             .where(
+                Transaction.user_id == current_user.id,
                 Transaction.type == "expense",
                 Transaction.date >= start,
                 Transaction.date <= end,
@@ -178,43 +181,28 @@ async def get_spending_flow(
             .group_by(Transaction.date, func.to_char(Transaction.date, "DD Mon"))
             .order_by(Transaction.date)
         )
-        result = await db.execute(q)
-        rows = result.all()
-
-        # Aggregate into ~5 points spread across the month
+        rows = (await db.execute(q)).all()
         if not rows:
             return SpendingFlowOut(period="monthly", points=[])
 
         total_days = (end - start).days + 1
         segment_size = max(total_days // 5, 1)
         segments: list[SpendingFlowPoint] = []
-        current_total = Decimal(0)
-        seg_start = start
 
         for row in rows:
             day_num = (row.dt - start).days
             seg_idx = min(day_num // segment_size, 4)
-
             while len(segments) <= seg_idx:
                 seg_date = start + timedelta(days=len(segments) * segment_size)
-                segments.append(SpendingFlowPoint(
-                    label=seg_date.strftime("%d %b"),
-                    amount=Decimal(0),
-                ))
-
+                segments.append(SpendingFlowPoint(label=seg_date.strftime("%d %b"), amount=Decimal(0)))
             segments[seg_idx].amount += row.amount
 
-        # Fill remaining segments
         while len(segments) < 5:
             seg_date = start + timedelta(days=len(segments) * segment_size)
-            segments.append(SpendingFlowPoint(
-                label=seg_date.strftime("%d %b"),
-                amount=Decimal(0),
-            ))
+            segments.append(SpendingFlowPoint(label=seg_date.strftime("%d %b"), amount=Decimal(0)))
 
         return SpendingFlowOut(period="monthly", points=segments)
     else:
-        # Annual: group by month
         start, end = _get_year_range(year)
         q = (
             select(
@@ -223,6 +211,7 @@ async def get_spending_flow(
                 func.sum(func.abs(Transaction.amount)).label("amount"),
             )
             .where(
+                Transaction.user_id == current_user.id,
                 Transaction.type == "expense",
                 Transaction.date >= start,
                 Transaction.date <= end,
@@ -230,13 +219,11 @@ async def get_spending_flow(
             .group_by(func.to_char(Transaction.date, "Mon"), extract("month", Transaction.date))
             .order_by(extract("month", Transaction.date))
         )
-        result = await db.execute(q)
-        rows = result.all()
+        rows = (await db.execute(q)).all()
         points = [SpendingFlowPoint(label=r.label, amount=r.amount) for r in rows]
         return SpendingFlowOut(period="annual", points=points)
 
 
-# GET /api/dashboard/top-categories
 @router.get("/top-categories", response_model=list[SpendingByCategory])
 async def top_categories(
     year: int = Query(None),
@@ -245,6 +232,7 @@ async def top_categories(
     end_date: Optional[date] = None,
     limit: int = Query(5, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if start_date and end_date:
         start, end = start_date, end_date
@@ -263,14 +251,17 @@ async def top_categories(
             func.sum(func.abs(Transaction.amount)).label("total"),
         )
         .join(Category, Transaction.category_id == Category.id)
-        .where(Transaction.type == "expense", Transaction.date >= start, Transaction.date <= end)
+        .where(
+            Transaction.user_id == current_user.id,
+            Transaction.type == "expense",
+            Transaction.date >= start,
+            Transaction.date <= end,
+        )
         .group_by(Category.name, Category.icon)
         .order_by(func.sum(func.abs(Transaction.amount)).desc())
         .limit(limit)
     )
-
-    result = await db.execute(q)
-    rows = result.all()
+    rows = (await db.execute(q)).all()
     return [
         SpendingByCategory(
             category_name=r.category_name,
@@ -282,21 +273,20 @@ async def top_categories(
     ]
 
 
-# GET /api/dashboard/recent-transactions
 @router.get("/recent-transactions", response_model=list[RecentTransactionOut])
 async def recent_transactions(
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     q = (
         select(Transaction)
         .options(selectinload(Transaction.category))
+        .where(Transaction.user_id == current_user.id)
         .order_by(Transaction.date.desc(), Transaction.id.desc())
         .limit(limit)
     )
-    result = await db.execute(q)
-    txns = result.scalars().all()
-
+    txns = (await db.execute(q)).scalars().all()
     return [
         RecentTransactionOut(
             id=t.id,
@@ -312,18 +302,18 @@ async def recent_transactions(
     ]
 
 
-# Keep existing endpoints
 @router.get("/summary", response_model=DashboardSummary)
 async def get_summary(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     query = select(
         func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("income"),
         func.coalesce(func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))), 0).label("expenses"),
         func.count(Transaction.id).label("count"),
-    )
+    ).where(Transaction.user_id == current_user.id)
     if start_date:
         query = query.where(Transaction.date >= start_date)
     if end_date:
@@ -343,6 +333,7 @@ async def spending_by_category(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     q = (
         select(
@@ -351,7 +342,7 @@ async def spending_by_category(
             func.sum(func.abs(Transaction.amount)).label("total"),
         )
         .join(Category, Transaction.category_id == Category.id)
-        .where(Transaction.type == "expense")
+        .where(Transaction.user_id == current_user.id, Transaction.type == "expense")
         .group_by(Category.name, Category.icon)
         .order_by(func.sum(func.abs(Transaction.amount)).desc())
     )
@@ -371,6 +362,7 @@ async def spending_by_category(
 async def monthly_trends(
     months: int = Query(12, ge=1, le=24),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     q = (
         select(
@@ -378,19 +370,17 @@ async def monthly_trends(
             func.coalesce(func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))), 0).label("income"),
             func.coalesce(func.sum(case((Transaction.type == "expense", func.abs(Transaction.amount)), else_=Decimal(0))), 0).label("expenses"),
         )
+        .where(Transaction.user_id == current_user.id)
         .group_by(func.to_char(Transaction.date, "YYYY-MM"))
         .order_by(func.to_char(Transaction.date, "YYYY-MM").desc())
         .limit(months)
     )
-    result = await db.execute(q)
-    rows = result.all()
+    rows = (await db.execute(q)).all()
     return [
         MonthlyTrend(month=r.month, income=r.income, expenses=r.expenses, net=r.income - r.expenses)
         for r in reversed(rows)
     ]
 
-
-# --- New Dashboard Endpoints ---
 
 MONTH_LABELS_PT = {
     1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
@@ -399,10 +389,11 @@ MONTH_LABELS_PT = {
 
 
 @router.get("/chart-6months", response_model=list[ChartMonthOut])
-async def chart_6_months(db: AsyncSession = Depends(get_db)):
+async def chart_6_months(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     today = date.today()
-
-    # Window: first day of the month 5 months ago.
     y0, m0 = today.year, today.month - 5
     while m0 <= 0:
         m0 += 12
@@ -415,7 +406,11 @@ async def chart_6_months(db: AsyncSession = Depends(get_db)):
             extract("month", Transaction.date).label("m"),
             func.coalesce(func.sum(func.abs(Transaction.amount)), Decimal(0)).label("total"),
         )
-        .where(Transaction.type == "expense", Transaction.date >= window_start)
+        .where(
+            Transaction.user_id == current_user.id,
+            Transaction.type == "expense",
+            Transaction.date >= window_start,
+        )
         .group_by("y", "m")
     )
     rows = (await db.execute(q)).all()
@@ -440,6 +435,7 @@ async def category_progress(
     year: Optional[int] = None,
     month: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     today = date.today()
     y = year or today.year
@@ -452,12 +448,16 @@ async def category_progress(
             func.sum(func.abs(Transaction.amount)).label("total"),
         )
         .join(Category, Transaction.category_id == Category.id)
-        .where(Transaction.type == "expense", Transaction.date >= start, Transaction.date <= end)
+        .where(
+            Transaction.user_id == current_user.id,
+            Transaction.type == "expense",
+            Transaction.date >= start,
+            Transaction.date <= end,
+        )
         .group_by(Category.name)
         .order_by(func.sum(func.abs(Transaction.amount)).desc())
     )
-    result = await db.execute(q)
-    rows = result.all()
+    rows = (await db.execute(q)).all()
 
     grand_total = sum(r.total for r in rows) if rows else Decimal("1")
     return [
@@ -477,6 +477,7 @@ async def transactions_grouped(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if start_date and end_date:
         start, end = start_date, end_date
@@ -489,11 +490,15 @@ async def transactions_grouped(
     q = (
         select(Transaction)
         .options(selectinload(Transaction.category))
-        .where(Transaction.type == "expense", Transaction.date >= start, Transaction.date <= end)
+        .where(
+            Transaction.user_id == current_user.id,
+            Transaction.type == "expense",
+            Transaction.date >= start,
+            Transaction.date <= end,
+        )
         .order_by(Transaction.date.desc())
     )
-    result = await db.execute(q)
-    txns = result.scalars().all()
+    txns = (await db.execute(q)).scalars().all()
 
     one_time: list[Transaction] = []
     recurring: list[Transaction] = []
@@ -506,7 +511,6 @@ async def transactions_grouped(
     return TransactionGroupedOut(one_time=one_time, recurring=recurring)
 
 
-# --- Expenses Chart (stacked bar) ---
 _INC_SUM = func.coalesce(
     func.sum(case((Transaction.type == "income", Transaction.amount), else_=Decimal(0))),
     Decimal(0),
@@ -519,18 +523,18 @@ _EXP_SUM = func.coalesce(
 
 @router.get("/expenses-chart", response_model=ExpensesChartOut)
 async def expenses_chart(
-    mode: str = Query("annual"),  # "annual", "monthly", "weekly"
+    mode: str = Query("annual"),
     year: Optional[int] = None,
     month: Optional[int] = None,
     week_start: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Stacked bar chart data: each bar has income, expenses, net, accumulated."""
     today = date.today()
     bars: list[ExpensesChartBar] = []
+    user_filter = Transaction.user_id == current_user.id
 
     if mode == "monthly" and year and month:
-        # 4 weekly-ish segments — single query, bucket via CASE.
         start, end = _get_month_range(year, month)
         import calendar
         num_days = calendar.monthrange(year, month)[1]
@@ -549,7 +553,7 @@ async def expenses_chart(
 
         q = (
             select(seg_expr, _INC_SUM, _EXP_SUM)
-            .where(Transaction.date >= start, Transaction.date <= end)
+            .where(user_filter, Transaction.date >= start, Transaction.date <= end)
             .group_by("seg")
         )
         rows = (await db.execute(q)).all()
@@ -560,16 +564,13 @@ async def expenses_chart(
             inc, exp = agg.get(seg_i, (Decimal(0), Decimal(0)))
             net = inc - exp
             accumulated += net
-            bars.append(ExpensesChartBar(
-                label=f"Sem {seg_i + 1}", income=inc, expenses=exp, net=net, accumulated=accumulated,
-            ))
+            bars.append(ExpensesChartBar(label=f"Sem {seg_i + 1}", income=inc, expenses=exp, net=net, accumulated=accumulated))
 
     elif mode == "weekly" and week_start:
-        # 7 daily bars — single query grouped by date.
         week_end = week_start + timedelta(days=6)
         q = (
             select(Transaction.date.label("d"), _INC_SUM, _EXP_SUM)
-            .where(Transaction.date >= week_start, Transaction.date <= week_end)
+            .where(user_filter, Transaction.date >= week_start, Transaction.date <= week_end)
             .group_by(Transaction.date)
         )
         rows = (await db.execute(q)).all()
@@ -582,17 +583,14 @@ async def expenses_chart(
             inc, exp = agg.get(d, (Decimal(0), Decimal(0)))
             net = inc - exp
             accumulated += net
-            bars.append(ExpensesChartBar(
-                label=DAYS_PT[i], income=inc, expenses=exp, net=net, accumulated=accumulated,
-            ))
+            bars.append(ExpensesChartBar(label=DAYS_PT[i], income=inc, expenses=exp, net=net, accumulated=accumulated))
 
     else:
-        # Annual: 12 monthly bars — single query grouped by month.
         y = year or today.year
         year_start, year_end = _get_year_range(y)
         q = (
             select(extract("month", Transaction.date).label("m"), _INC_SUM, _EXP_SUM)
-            .where(Transaction.date >= year_start, Transaction.date <= year_end)
+            .where(user_filter, Transaction.date >= year_start, Transaction.date <= year_end)
             .group_by("m")
         )
         rows = (await db.execute(q)).all()
@@ -603,9 +601,7 @@ async def expenses_chart(
             inc, exp = agg.get(m, (Decimal(0), Decimal(0)))
             net = inc - exp
             accumulated += net
-            bars.append(ExpensesChartBar(
-                label=MONTH_LABELS_PT[m], income=inc, expenses=exp, net=net, accumulated=accumulated,
-            ))
+            bars.append(ExpensesChartBar(label=MONTH_LABELS_PT[m], income=inc, expenses=exp, net=net, accumulated=accumulated))
 
     total_expenses = sum((b.expenses for b in bars), Decimal(0))
     num_bars = len(bars) or 1
@@ -621,7 +617,6 @@ async def expenses_chart(
     )
 
 
-# --- Category Transactions (for pie chart drill-down) ---
 @router.get("/category-transactions", response_model=list[TransactionOut])
 async def category_transactions(
     category_name: str = Query(...),
@@ -632,8 +627,8 @@ async def category_transactions(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Return expense transactions for a given category in a date range (paginated)."""
     if start_date and end_date:
         start, end = start_date, end_date
     else:
@@ -647,6 +642,7 @@ async def category_transactions(
         .options(selectinload(Transaction.category))
         .join(Category, Transaction.category_id == Category.id)
         .where(
+            Transaction.user_id == current_user.id,
             Category.name == category_name,
             Transaction.type == "expense",
             Transaction.date >= start,

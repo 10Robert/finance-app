@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import BankImport, StagedTransaction
+from app.dependencies import get_current_user
+from app.models import BankImport, StagedTransaction, User
 from app.schemas import BankImportOut, StagedTransactionOut, StagedBatchUpdate
 from app.services import import_service
 
@@ -17,14 +18,32 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 
+async def _get_owned_import(import_id: int, user_id: int, db: AsyncSession) -> BankImport:
+    bank_import = await db.get(BankImport, import_id)
+    if not bank_import or bank_import.user_id != user_id:
+        raise HTTPException(404, "Import not found")
+    return bank_import
+
+
 @router.get("/", response_model=list[BankImportOut])
-async def list_imports(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(BankImport).order_by(BankImport.created_at.desc()))
+async def list_imports(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(BankImport)
+        .where(BankImport.user_id == current_user.id)
+        .order_by(BankImport.created_at.desc())
+    )
     return result.scalars().all()
 
 
 @router.post("/upload", response_model=BankImportOut, status_code=201)
-async def upload_file(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+async def upload_file(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not file.filename:
         raise HTTPException(400, "No filename provided")
 
@@ -32,12 +51,16 @@ async def upload_file(file: UploadFile = File(...), db: AsyncSession = Depends(g
     if ext not in ("csv", "pdf"):
         raise HTTPException(400, "Only CSV and PDF files are supported")
 
-    # Save file
     file_path = UPLOAD_DIR / file.filename
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    bank_import = BankImport(filename=file.filename, file_type=ext, status="pending")
+    bank_import = BankImport(
+        user_id=current_user.id,
+        filename=file.filename,
+        file_type=ext,
+        status="pending",
+    )
     db.add(bank_import)
     await db.commit()
     await db.refresh(bank_import)
@@ -45,9 +68,14 @@ async def upload_file(file: UploadFile = File(...), db: AsyncSession = Depends(g
 
 
 @router.post("/{import_id}/process")
-async def process_import(import_id: int, db: AsyncSession = Depends(get_db)):
+async def process_import(
+    import_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_import(import_id, current_user.id, db)
     try:
-        count = await import_service.process_import(import_id, db)
+        count = await import_service.process_import(import_id, current_user.id, db)
         return {"message": f"Processed {count} transactions", "count": count}
     except ValueError as e:
         raise HTTPException(404, str(e))
@@ -56,7 +84,12 @@ async def process_import(import_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{import_id}/staged", response_model=list[StagedTransactionOut])
-async def get_staged(import_id: int, db: AsyncSession = Depends(get_db)):
+async def get_staged(
+    import_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_import(import_id, current_user.id, db)
     result = await db.execute(
         select(StagedTransaction)
         .options(selectinload(StagedTransaction.category))
@@ -67,7 +100,13 @@ async def get_staged(import_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{import_id}/staged")
-async def update_staged(import_id: int, data: StagedBatchUpdate, db: AsyncSession = Depends(get_db)):
+async def update_staged(
+    import_id: int,
+    data: StagedBatchUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_import(import_id, current_user.id, db)
     for update in data.updates:
         staged_id = update.get("id")
         if not staged_id:
@@ -84,9 +123,14 @@ async def update_staged(import_id: int, data: StagedBatchUpdate, db: AsyncSessio
 
 
 @router.post("/{import_id}/confirm")
-async def confirm_import(import_id: int, db: AsyncSession = Depends(get_db)):
+async def confirm_import(
+    import_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_import(import_id, current_user.id, db)
     try:
-        result = await import_service.confirm_import(import_id, db)
+        result = await import_service.confirm_import(import_id, current_user.id, db)
         return {
             "message": f"Confirmed {result['created']} transactions",
             "created": result["created"],

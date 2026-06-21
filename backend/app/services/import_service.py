@@ -12,21 +12,21 @@ from app.services import parser_service, llm_service, docling_service, category_
 logger = logging.getLogger(__name__)
 
 
-async def get_categories_for_llm(db: AsyncSession) -> list[dict]:
-    result = await db.execute(select(Category))
+async def get_categories_for_llm(db: AsyncSession, user_id: int) -> list[dict]:
+    result = await db.execute(select(Category).where(Category.user_id == user_id))
     categories = result.scalars().all()
     return [{"name": c.name, "type": c.type} for c in categories]
 
 
-async def get_category_map(db: AsyncSession) -> dict[str, int]:
-    result = await db.execute(select(Category))
+async def get_category_map(db: AsyncSession, user_id: int) -> dict[str, int]:
+    result = await db.execute(select(Category).where(Category.user_id == user_id))
     return {c.name: c.id for c in result.scalars().all()}
 
 
-async def process_import(bank_import_id: int, db: AsyncSession) -> int:
+async def process_import(bank_import_id: int, user_id: int, db: AsyncSession) -> int:
     """Process an uploaded file: parse, send to LLM, create staged transactions."""
     bank_import = await db.get(BankImport, bank_import_id)
-    if not bank_import:
+    if not bank_import or bank_import.user_id != user_id:
         raise ValueError("Import not found")
 
     bank_import.status = "processing"
@@ -34,9 +34,9 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
 
     try:
         file_path = Path("uploads") / bank_import.filename
-        categories = await get_categories_for_llm(db)
-        category_map = await get_category_map(db)
-        few_shot = await category_learning.get_few_shot_examples(db)
+        categories = await get_categories_for_llm(db, user_id)
+        category_map = await get_category_map(db, user_id)
+        few_shot = await category_learning.get_few_shot_examples(db, user_id)
 
         if bank_import.file_type == "csv":
             parsed_rows = await parser_service.parse_csv_async(file_path)
@@ -45,7 +45,7 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
             applied: dict[int, dict] = {}
             unmatched_indices: list[int] = []
             for i, row in enumerate(parsed_rows):
-                rule = await category_learning.lookup_rule(db, row.get("description", ""))
+                rule = await category_learning.lookup_rule(db, user_id, row.get("description", ""))
                 if rule and rule.hit_count >= category_learning.AUTO_APPLY_THRESHOLD:
                     applied[i] = {
                         "category_id": rule.category_id,
@@ -120,7 +120,7 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
                 description = llm_row.get("cleaned_description", llm_row.get("description", ""))
 
                 # Override LLM category with learned rule when confident enough.
-                rule = await category_learning.lookup_rule(db, description)
+                rule = await category_learning.lookup_rule(db, user_id, description)
                 if rule and rule.hit_count >= category_learning.AUTO_APPLY_THRESHOLD:
                     category_id = rule.category_id
                     ttype = rule.type
@@ -156,12 +156,8 @@ async def process_import(bank_import_id: int, db: AsyncSession) -> int:
         raise
 
 
-async def confirm_import(bank_import_id: int, db: AsyncSession) -> dict:
-    """Move accepted staged transactions into the transactions table.
-
-    Income entries (salaries, refunds) are skipped intentionally — those are
-    managed exclusively from the Rendimentos screen, not from bank statements.
-    """
+async def confirm_import(bank_import_id: int, user_id: int, db: AsyncSession) -> dict:
+    """Move accepted staged transactions into the transactions table."""
     result = await db.execute(
         select(StagedTransaction).where(
             StagedTransaction.bank_import_id == bank_import_id,
@@ -173,6 +169,7 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> dict:
     skipped_income = sum(1 for s in staged_rows if s.type == "income")
     rows_to_insert = [
         {
+            "user_id": user_id,
             "date": s.date,
             "description": s.description,
             "amount": s.amount,
@@ -187,14 +184,11 @@ async def confirm_import(bank_import_id: int, db: AsyncSession) -> dict:
     if rows_to_insert:
         await db.execute(insert(Transaction), rows_to_insert)
 
-    # Learn from this confirmation: every accepted row with a category becomes
-    # a rule (or increments an existing one). Income rows are skipped from
-    # transactions but still count as feedback.
     learn_rows = [
         (s.description, s.type, s.category_id) for s in staged_rows if s.category_id
     ]
     if learn_rows:
-        await category_learning.learn_from_confirmed(db, learn_rows)
+        await category_learning.learn_from_confirmed(db, user_id, learn_rows)
 
     bank_import = await db.get(BankImport, bank_import_id)
     bank_import.status = "completed"

@@ -7,11 +7,27 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
-class Category(Base):
-    __tablename__ = "categories"
+class User(Base):
+    __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Category(Base):
+    __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_category_user_name"),
+        Index("idx_categories_user", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100))
     type: Mapped[str] = mapped_column(String(10))  # 'expense' or 'income'
     icon: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -22,8 +38,12 @@ class Category(Base):
 
 class BankImport(Base):
     __tablename__ = "bank_imports"
+    __table_args__ = (
+        Index("idx_bank_imports_user", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     filename: Mapped[str] = mapped_column(String(255))
     file_type: Mapped[str] = mapped_column(String(10))  # 'csv' or 'pdf'
     row_count: Mapped[int | None]
@@ -44,9 +64,11 @@ class Transaction(Base):
         Index("idx_transactions_category", "category_id"),
         Index("idx_transactions_type", "type"),
         Index("idx_transactions_date_type", "date", "type"),
+        Index("idx_transactions_user_date", "user_id", "date"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     date: Mapped[date] = mapped_column(Date)
     description: Mapped[str] = mapped_column(String(500))
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
@@ -68,10 +90,12 @@ class Transaction(Base):
 class SalaryConfig(Base):
     __tablename__ = "salary_configs"
     __table_args__ = (
-        UniqueConstraint("reference_month", "reference_year", name="uq_salary_config_month_year"),
+        UniqueConstraint("user_id", "reference_month", "reference_year", name="uq_salary_config_user_month_year"),
+        Index("idx_salary_configs_user", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     reference_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reference_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     base_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))
@@ -95,9 +119,11 @@ class MonthlyEntry(Base):
     __tablename__ = "monthly_entries"
     __table_args__ = (
         Index("idx_monthly_entries_period", "reference_year", "reference_month"),
+        Index("idx_monthly_entries_user_period", "user_id", "reference_year", "reference_month"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     reference_month: Mapped[int] = mapped_column(Integer)  # 1-12
     reference_year: Mapped[int] = mapped_column(Integer)
     entry_type: Mapped[str] = mapped_column(String(20))  # 'overtime' | 'refund' | 'late' | 'absence'
@@ -146,8 +172,12 @@ class OvertimeEntry(Base):
 class FixedExpense(Base):
     """A recurring monthly expense: either permanent or with an end date."""
     __tablename__ = "fixed_expenses"
+    __table_args__ = (
+        Index("idx_fixed_expenses_user", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     description: Mapped[str] = mapped_column(String(500))
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
@@ -165,8 +195,12 @@ class FixedExpense(Base):
 class InstallmentPurchase(Base):
     """A product bought in installments: total value split across N months."""
     __tablename__ = "installment_purchases"
+    __table_args__ = (
+        Index("idx_installment_purchases_user", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     description: Mapped[str] = mapped_column(String(500))
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     installment_count: Mapped[int] = mapped_column(Integer)
@@ -202,8 +236,12 @@ class StagedTransaction(Base):
 
 class CreditCard(Base):
     __tablename__ = "credit_cards"
+    __table_args__ = (
+        Index("idx_credit_cards_user", "user_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(100))
     brand: Mapped[str | None] = mapped_column(String(50), nullable=True)
     color: Mapped[str] = mapped_column(String(20), default="#a78bfa", server_default="#a78bfa")
@@ -280,11 +318,13 @@ class CategoryRule(Base):
     """
     __tablename__ = "category_rules"
     __table_args__ = (
-        UniqueConstraint("pattern", "type", name="uq_category_rule_pattern_type"),
+        UniqueConstraint("user_id", "pattern", "type", name="uq_category_rule_user_pattern_type"),
         Index("idx_category_rules_pattern", "pattern"),
+        Index("idx_category_rules_user", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     pattern: Mapped[str] = mapped_column(String(200))  # normalized description
     type: Mapped[str] = mapped_column(String(10))  # 'expense' | 'income'
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
@@ -298,11 +338,13 @@ class CategoryRule(Base):
 class Income(Base):
     __tablename__ = "incomes"
     __table_args__ = (
-        UniqueConstraint("reference_month", "reference_year", name="uq_income_month_year"),
+        UniqueConstraint("user_id", "reference_month", "reference_year", name="uq_income_user_month_year"),
         Index("idx_income_period", "reference_year", "reference_month"),
+        Index("idx_income_user_period", "user_id", "reference_year", "reference_month"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     reference_month: Mapped[int] = mapped_column(Integer)  # 1-12
     reference_year: Mapped[int] = mapped_column(Integer)
     base_salary: Mapped[Decimal] = mapped_column(Numeric(12, 2))

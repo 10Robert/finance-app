@@ -14,12 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import (
     Category,
     CreditCard,
     CreditCardExpense,
     CreditCardInstallment,
     Transaction,
+    User,
 )
 from app.schemas import (
     CreditCardCreate,
@@ -41,18 +43,14 @@ from app.services import parser_service, llm_service, docling_service
 
 logger = logging.getLogger(__name__)
 
-# Padrão "NN/MM" no final da descrição (com possível espaço): "ITEM 02/06"
 _INSTALLMENT_RE = re.compile(r"\s*(\d{1,2})\s*/\s*(\d{1,2})\s*$")
 
 
 def _strip_installment_marker(desc: str) -> str:
-    """Remove sufixo '02/06', '01/12' etc. da descrição original."""
     return _INSTALLMENT_RE.sub("", desc).strip()
 
 
 def _normalize_desc(desc: str) -> str:
-    """Normaliza descrição para comparação: minúsculas, sem espaços extras,
-    sem o sufixo de parcela. Usado para detectar duplicatas."""
     base = _strip_installment_marker(desc)
     return re.sub(r"\s+", " ", base).strip().lower()
 
@@ -66,8 +64,6 @@ PT_MONTHS = [
 ]
 
 
-# ─── helpers ──────────────────────────────────────────────────────────────
-
 def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
     idx = (month - 1) + delta
     new_year = year + idx // 12
@@ -76,31 +72,17 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
 
 
 def _bill_period_for_purchase(purchase_date: date, closing_day: int) -> tuple[int, int]:
-    """Return (year, month) of the fatura that closes for this purchase.
-
-    Rule: a purchase on day < closing_day falls into the fatura that closes
-    THIS month; on the closing day itself or after, it falls into next
-    month's fatura. Example with closing_day=21: a purchase on day 20 goes
-    into the current-month bill; days 21..end-of-month go into the next.
-    """
     if purchase_date.day < closing_day:
         return purchase_date.year, purchase_date.month
     return _add_months(purchase_date.year, purchase_date.month, 1)
 
 
 def _due_date_for_bill(bill_year: int, bill_month: int, due_day: int) -> date:
-    """The due date for a bill that closes in (bill_year, bill_month).
-
-    Convention: the bill closing in month M is paid on `due_day` of month M
-    (or M+1 if due_day < closing_day — but we keep it simple: same month).
-    Day is clamped to month length.
-    """
     max_day = calendar.monthrange(bill_year, bill_month)[1]
     return date(bill_year, bill_month, min(due_day, max_day))
 
 
-async def _delete_mirror_transactions(expense_id: int, db: AsyncSession) -> None:
-    """Remove the Transaction mirrors for all installments of an expense."""
+async def _delete_mirror_transactions(expense_id: int, user_id: int, db: AsyncSession) -> None:
     result = await db.execute(
         select(CreditCardInstallment.id).where(CreditCardInstallment.expense_id == expense_id)
     )
@@ -108,16 +90,21 @@ async def _delete_mirror_transactions(expense_id: int, db: AsyncSession) -> None
     if not inst_ids:
         return
     sources = [f"cc_inst_{i}" for i in inst_ids]
-    await db.execute(delete(Transaction).where(Transaction.source.in_(sources)))
+    await db.execute(
+        delete(Transaction).where(
+            Transaction.user_id == user_id,
+            Transaction.source.in_(sources),
+        )
+    )
 
 
 async def _create_mirror_transaction(
     inst: CreditCardInstallment,
     expense: CreditCardExpense,
     card: CreditCard,
+    user_id: int,
     db: AsyncSession,
 ) -> None:
-    """Create a Transaction row that mirrors a single installment."""
     if expense.is_refunded:
         return
     due = _due_date_for_bill(inst.bill_year, inst.bill_month, card.due_day)
@@ -131,6 +118,7 @@ async def _create_mirror_transaction(
     else:
         desc = f"{expense.description} - {card.name}"
     tx = Transaction(
+        user_id=user_id,
         date=due,
         description=desc,
         amount=inst.amount,
@@ -143,9 +131,8 @@ async def _create_mirror_transaction(
 
 
 async def _generate_installments(
-    expense: CreditCardExpense, card: CreditCard, db: AsyncSession
+    expense: CreditCardExpense, card: CreditCard, user_id: int, db: AsyncSession
 ) -> None:
-    """Create installments + their Transaction mirrors based on expense settings."""
     start_year, start_month = _bill_period_for_purchase(expense.purchase_date, card.closing_day)
 
     if expense.is_subscription:
@@ -169,15 +156,10 @@ async def _generate_installments(
         )
         db.add(inst)
         await db.flush()
-        await _create_mirror_transaction(inst, expense, card, db)
+        await _create_mirror_transaction(inst, expense, card, user_id, db)
 
 
 async def _used_amount(card_id: int, db: AsyncSession) -> Decimal:
-    """Sum of unpaid (current-or-future bill) installments, excluding refunded.
-
-    Subscriptions are excluded — they recur monthly and don't reserve credit
-    against the global limit, only count toward the current bill.
-    """
     today = date.today()
     cur_year, cur_month = today.year, today.month
     result = await db.execute(
@@ -199,39 +181,54 @@ async def _used_amount(card_id: int, db: AsyncSession) -> Decimal:
     return Decimal(result.scalar() or 0)
 
 
-# ─── credit cards CRUD ────────────────────────────────────────────────────
+async def _get_owned_card(card_id: int, user_id: int, db: AsyncSession) -> CreditCard:
+    card = await db.get(CreditCard, card_id)
+    if not card or card.user_id != user_id:
+        raise HTTPException(404, "Card not found")
+    return card
+
+
+async def _get_owned_expense(expense_id: int, user_id: int, db: AsyncSession) -> CreditCardExpense:
+    expense = await db.get(CreditCardExpense, expense_id)
+    if not expense:
+        raise HTTPException(404, "Expense not found")
+    card = await db.get(CreditCard, expense.credit_card_id)
+    if not card or card.user_id != user_id:
+        raise HTTPException(404, "Expense not found")
+    return expense
+
 
 @router.get("/cards", response_model=list[CreditCardOut])
-async def list_cards(db: AsyncSession = Depends(get_db)):
+async def list_cards(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(
-        select(CreditCard).where(CreditCard.active.is_(True)).order_by(CreditCard.name)
+        select(CreditCard)
+        .where(CreditCard.user_id == current_user.id, CreditCard.active.is_(True))
+        .order_by(CreditCard.name)
     )
     cards = list(result.scalars().all())
     out: list[CreditCardOut] = []
     for c in cards:
         used = await _used_amount(c.id, db)
-        out.append(
-            CreditCardOut(
-                id=c.id,
-                name=c.name,
-                brand=c.brand,
-                color=c.color,
-                credit_limit=c.credit_limit,
-                closing_day=c.closing_day,
-                due_day=c.due_day,
-                active=c.active,
-                used_amount=used,
-                created_at=c.created_at,
-            )
-        )
+        out.append(CreditCardOut(
+            id=c.id, name=c.name, brand=c.brand, color=c.color,
+            credit_limit=c.credit_limit, closing_day=c.closing_day, due_day=c.due_day,
+            active=c.active, used_amount=used, created_at=c.created_at,
+        ))
     return out
 
 
 @router.post("/cards", response_model=CreditCardOut, status_code=201)
-async def create_card(data: CreditCardCreate, db: AsyncSession = Depends(get_db)):
+async def create_card(
+    data: CreditCardCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not (1 <= data.closing_day <= 31) or not (1 <= data.due_day <= 31):
         raise HTTPException(400, "closing_day and due_day must be in 1..31")
-    card = CreditCard(**data.model_dump())
+    card = CreditCard(user_id=current_user.id, **data.model_dump())
     db.add(card)
     await db.commit()
     await db.refresh(card)
@@ -243,10 +240,13 @@ async def create_card(data: CreditCardCreate, db: AsyncSession = Depends(get_db)
 
 
 @router.put("/cards/{card_id}", response_model=CreditCardOut)
-async def update_card(card_id: int, data: CreditCardUpdate, db: AsyncSession = Depends(get_db)):
-    card = await db.get(CreditCard, card_id)
-    if not card:
-        raise HTTPException(404, "Card not found")
+async def update_card(
+    card_id: int,
+    data: CreditCardUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    card = await _get_owned_card(card_id, current_user.id, db)
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(card, k, v)
     await db.commit()
@@ -260,35 +260,41 @@ async def update_card(card_id: int, data: CreditCardUpdate, db: AsyncSession = D
 
 
 @router.delete("/cards/{card_id}", status_code=204)
-async def delete_card(card_id: int, db: AsyncSession = Depends(get_db)):
-    card = await db.get(CreditCard, card_id)
-    if not card:
-        raise HTTPException(404, "Card not found")
-    # Cascade clears expenses + installments via FK; transactions need manual cleanup.
+async def delete_card(
+    card_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    card = await _get_owned_card(card_id, current_user.id, db)
     inst_result = await db.execute(
         select(CreditCardInstallment.id).where(CreditCardInstallment.credit_card_id == card_id)
     )
     inst_ids = [r[0] for r in inst_result.all()]
     if inst_ids:
         sources = [f"cc_inst_{i}" for i in inst_ids]
-        await db.execute(delete(Transaction).where(Transaction.source.in_(sources)))
+        await db.execute(
+            delete(Transaction).where(
+                Transaction.user_id == current_user.id,
+                Transaction.source.in_(sources),
+            )
+        )
     await db.delete(card)
     await db.commit()
 
 
-# ─── expenses CRUD ────────────────────────────────────────────────────────
-
 @router.post("/expenses", response_model=CreditCardExpenseOut, status_code=201)
-async def create_expense(data: CreditCardExpenseCreate, db: AsyncSession = Depends(get_db)):
-    card = await db.get(CreditCard, data.credit_card_id)
-    if not card:
-        raise HTTPException(404, "Card not found")
+async def create_expense(
+    data: CreditCardExpenseCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    card = await _get_owned_card(data.credit_card_id, current_user.id, db)
     if data.installment_count < 1:
         raise HTTPException(400, "installment_count must be >= 1")
     expense = CreditCardExpense(**data.model_dump())
     db.add(expense)
     await db.flush()
-    await _generate_installments(expense, card, db)
+    await _generate_installments(expense, card, current_user.id, db)
     await db.commit()
     result = await db.execute(
         select(CreditCardExpense)
@@ -305,6 +311,7 @@ async def create_expense(data: CreditCardExpenseCreate, db: AsyncSession = Depen
 async def list_expenses(
     card_id: int | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     q = (
         select(CreditCardExpense)
@@ -312,6 +319,8 @@ async def list_expenses(
             selectinload(CreditCardExpense.category),
             selectinload(CreditCardExpense.installments),
         )
+        .join(CreditCard, CreditCard.id == CreditCardExpense.credit_card_id)
+        .where(CreditCard.user_id == current_user.id)
         .order_by(CreditCardExpense.purchase_date.desc())
     )
     if card_id:
@@ -325,40 +334,40 @@ async def update_expense(
     expense_id: int,
     data: CreditCardExpenseUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    expense = await db.get(CreditCardExpense, expense_id)
-    if not expense:
-        raise HTTPException(404, "Expense not found")
+    expense = await _get_owned_expense(expense_id, current_user.id, db)
 
     payload = data.model_dump(exclude_unset=True)
-    # Editing installment_count, amount, purchase_date, card or subscription flag
-    # changes the schedule — easier to regenerate than to patch in place.
     schedule_keys = {
         "credit_card_id", "amount", "purchase_date",
         "installment_count", "is_subscription",
     }
     needs_regen = bool(schedule_keys & payload.keys())
 
+    # If swapping card, validate ownership of the new one.
+    if "credit_card_id" in payload and payload["credit_card_id"] != expense.credit_card_id:
+        await _get_owned_card(payload["credit_card_id"], current_user.id, db)
+
     for k, v in payload.items():
         setattr(expense, k, v)
 
     if needs_regen:
-        await _delete_mirror_transactions(expense.id, db)
+        await _delete_mirror_transactions(expense.id, current_user.id, db)
         await db.execute(
             delete(CreditCardInstallment).where(CreditCardInstallment.expense_id == expense.id)
         )
         await db.flush()
         card = await db.get(CreditCard, expense.credit_card_id)
-        await _generate_installments(expense, card, db)
+        await _generate_installments(expense, card, current_user.id, db)
     else:
-        # Non-schedule fields might still affect mirror description/category — refresh them.
-        await _delete_mirror_transactions(expense.id, db)
+        await _delete_mirror_transactions(expense.id, current_user.id, db)
         card = await db.get(CreditCard, expense.credit_card_id)
         result = await db.execute(
             select(CreditCardInstallment).where(CreditCardInstallment.expense_id == expense.id)
         )
         for inst in result.scalars().all():
-            await _create_mirror_transaction(inst, expense, card, db)
+            await _create_mirror_transaction(inst, expense, card, current_user.id, db)
 
     await db.commit()
     result = await db.execute(
@@ -373,26 +382,27 @@ async def update_expense(
 
 
 @router.delete("/expenses/{expense_id}", status_code=204)
-async def delete_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
-    expense = await db.get(CreditCardExpense, expense_id)
-    if not expense:
-        raise HTTPException(404, "Expense not found")
-    await _delete_mirror_transactions(expense.id, db)
+async def delete_expense(
+    expense_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    expense = await _get_owned_expense(expense_id, current_user.id, db)
+    await _delete_mirror_transactions(expense.id, current_user.id, db)
     await db.delete(expense)
     await db.commit()
 
 
-# ─── refund toggle ────────────────────────────────────────────────────────
-
 @router.post("/expenses/{expense_id}/refund", response_model=CreditCardExpenseOut)
-async def refund_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
-    expense = await db.get(CreditCardExpense, expense_id)
-    if not expense:
-        raise HTTPException(404, "Expense not found")
+async def refund_expense(
+    expense_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    expense = await _get_owned_expense(expense_id, current_user.id, db)
     expense.is_refunded = True
     expense.refunded_at = date.today()
-    # Remove from "gastos" totals by deleting the mirrors.
-    await _delete_mirror_transactions(expense.id, db)
+    await _delete_mirror_transactions(expense.id, current_user.id, db)
     await db.commit()
     result = await db.execute(
         select(CreditCardExpense)
@@ -406,10 +416,12 @@ async def refund_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/expenses/{expense_id}/unrefund", response_model=CreditCardExpenseOut)
-async def unrefund_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
-    expense = await db.get(CreditCardExpense, expense_id)
-    if not expense:
-        raise HTTPException(404, "Expense not found")
+async def unrefund_expense(
+    expense_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    expense = await _get_owned_expense(expense_id, current_user.id, db)
     expense.is_refunded = False
     expense.refunded_at = None
     card = await db.get(CreditCard, expense.credit_card_id)
@@ -417,7 +429,7 @@ async def unrefund_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
         select(CreditCardInstallment).where(CreditCardInstallment.expense_id == expense.id)
     )
     for inst in result.scalars().all():
-        await _create_mirror_transaction(inst, expense, card, db)
+        await _create_mirror_transaction(inst, expense, card, current_user.id, db)
     await db.commit()
     result = await db.execute(
         select(CreditCardExpense)
@@ -430,48 +442,44 @@ async def unrefund_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
     return result.scalar_one()
 
 
-# ─── antecipar parcela ────────────────────────────────────────────────────
-
 @router.post("/installments/{installment_id}/anticipate")
 async def anticipate_installment(
     installment_id: int,
     data: AnticipateInstallmentRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     inst = await db.get(CreditCardInstallment, installment_id)
     if not inst:
         raise HTTPException(404, "Installment not found")
+    card = await db.get(CreditCard, inst.credit_card_id)
+    if not card or card.user_id != current_user.id:
+        raise HTTPException(404, "Installment not found")
     if not (1 <= data.target_month <= 12):
         raise HTTPException(400, "target_month must be 1..12")
     expense = await db.get(CreditCardExpense, inst.expense_id)
-    card = await db.get(CreditCard, inst.credit_card_id)
 
     inst.bill_month = data.target_month
     inst.bill_year = data.target_year
 
-    # Refresh the mirror transaction for this installment
     await db.execute(
-        delete(Transaction).where(Transaction.source == f"cc_inst_{inst.id}")
+        delete(Transaction).where(
+            Transaction.user_id == current_user.id,
+            Transaction.source == f"cc_inst_{inst.id}",
+        )
     )
     await db.flush()
-    await _create_mirror_transaction(inst, expense, card, db)
+    await _create_mirror_transaction(inst, expense, card, current_user.id, db)
     await db.commit()
     return {"ok": True, "installment_id": inst.id, "bill_month": inst.bill_month, "bill_year": inst.bill_year}
 
-
-# ─── bills (faturas) ──────────────────────────────────────────────────────
 
 @router.get("/bills/months", response_model=list[CreditCardMonthSummaryOut])
 async def list_bill_months(
     year: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Totals for each bill month of the given year (jan..dec).
-
-    Refunded expenses are excluded from `total` and shown in `refunded_total`.
-    Also returns breakdown by type: installment / subscription / one_time.
-    """
-    # Load all rows once and group in memory — avoids 60+ round-trips per call.
     rows_q = await db.execute(
         select(
             CreditCardInstallment.bill_month,
@@ -481,7 +489,11 @@ async def list_bill_months(
             CreditCardExpense.installment_count,
         )
         .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
-        .where(CreditCardInstallment.bill_year == year)
+        .join(CreditCard, CreditCard.id == CreditCardInstallment.credit_card_id)
+        .where(
+            CreditCard.user_id == current_user.id,
+            CreditCardInstallment.bill_year == year,
+        )
     )
     buckets: dict[int, dict[str, Decimal | int]] = {
         m: {
@@ -523,18 +535,20 @@ async def list_bill_months(
 
 
 @router.get("/analytics/daily/{year}/{month}", response_model=list[CreditCardDailySpendOut])
-async def daily_spend(year: int, month: int, db: AsyncSession = Depends(get_db)):
-    """Per-day total of credit-card spend within a single bill month.
-
-    Day is taken from the `purchase_date` of the parent expense (since that's
-    when the user actually spent). Excludes refunded.
-    """
+async def daily_spend(
+    year: int,
+    month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not (1 <= month <= 12):
         raise HTTPException(400, "month must be 1..12")
     rows = await db.execute(
         select(CreditCardExpense.purchase_date, CreditCardInstallment.amount)
         .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
+        .join(CreditCard, CreditCard.id == CreditCardInstallment.credit_card_id)
         .where(
+            CreditCard.user_id == current_user.id,
             CreditCardInstallment.bill_year == year,
             CreditCardInstallment.bill_month == month,
             CreditCardExpense.is_refunded.is_(False),
@@ -549,8 +563,12 @@ async def daily_spend(year: int, month: int, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/bills/{year}/{month}", response_model=list[CreditCardBillItemOut])
-async def get_bill(year: int, month: int, db: AsyncSession = Depends(get_db)):
-    """All installments that fall on a given fatura (year/month)."""
+async def get_bill(
+    year: int,
+    month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not (1 <= month <= 12):
         raise HTTPException(400, "month must be 1..12")
     result = await db.execute(
@@ -559,6 +577,7 @@ async def get_bill(year: int, month: int, db: AsyncSession = Depends(get_db)):
         .join(CreditCard, CreditCard.id == CreditCardInstallment.credit_card_id)
         .options(selectinload(CreditCardExpense.category))
         .where(
+            CreditCard.user_id == current_user.id,
             CreditCardInstallment.bill_year == year,
             CreditCardInstallment.bill_month == month,
         )
@@ -593,12 +612,15 @@ async def get_bill(year: int, month: int, db: AsyncSession = Depends(get_db)):
     return out
 
 
-# ─── analytics ────────────────────────────────────────────────────────────
-
 @router.get("/analytics/by-category")
-async def by_category(year: int, month: int | None = None, db: AsyncSession = Depends(get_db)):
-    """Total credit-card spend per category for a given year (or single month)."""
+async def by_category(
+    year: int,
+    month: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     where_clauses = [
+        CreditCard.user_id == current_user.id,
         CreditCardInstallment.bill_year == year,
         CreditCardExpense.is_refunded.is_(False),
     ]
@@ -612,6 +634,7 @@ async def by_category(year: int, month: int | None = None, db: AsyncSession = De
         )
         .select_from(CreditCardInstallment)
         .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
+        .join(CreditCard, CreditCard.id == CreditCardInstallment.credit_card_id)
         .outerjoin(Category, Category.id == CreditCardExpense.category_id)
         .where(*where_clauses)
         .group_by(Category.name, Category.icon)
@@ -624,8 +647,11 @@ async def by_category(year: int, month: int | None = None, db: AsyncSession = De
 
 
 @router.get("/analytics/by-type")
-async def by_type(year: int, db: AsyncSession = Depends(get_db)):
-    """Annual totals split into subscription / installment / one_time."""
+async def by_type(
+    year: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     rows = await db.execute(
         select(
             CreditCardExpense.is_subscription,
@@ -634,7 +660,9 @@ async def by_type(year: int, db: AsyncSession = Depends(get_db)):
         )
         .select_from(CreditCardInstallment)
         .join(CreditCardExpense, CreditCardExpense.id == CreditCardInstallment.expense_id)
+        .join(CreditCard, CreditCard.id == CreditCardInstallment.credit_card_id)
         .where(
+            CreditCard.user_id == current_user.id,
             CreditCardInstallment.bill_year == year,
             CreditCardExpense.is_refunded.is_(False),
         )
@@ -657,11 +685,12 @@ async def by_type(year: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/expenses/bulk", response_model=list[CreditCardExpenseOut], status_code=201)
-async def bulk_create_expenses(data: CreditCardBulkCreate, db: AsyncSession = Depends(get_db)):
-    """Create multiple expenses at once. Used by the PDF importer after review."""
-    card = await db.get(CreditCard, data.credit_card_id)
-    if not card:
-        raise HTTPException(404, "Card not found")
+async def bulk_create_expenses(
+    data: CreditCardBulkCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    card = await _get_owned_card(data.credit_card_id, current_user.id, db)
     created_ids: list[int] = []
     for item in data.items:
         expense = CreditCardExpense(
@@ -676,7 +705,7 @@ async def bulk_create_expenses(data: CreditCardBulkCreate, db: AsyncSession = De
         )
         db.add(expense)
         await db.flush()
-        await _generate_installments(expense, card, db)
+        await _generate_installments(expense, card, current_user.id, db)
         created_ids.append(expense.id)
     await db.commit()
     if not created_ids:
@@ -697,50 +726,27 @@ async def import_pdf_parse(
     card_id: int,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Upload a credit-card statement PDF, returns parsed transactions for review.
-
-    Pipeline:
-    1) PDF -> markdown estruturado via Granite-Docling-258M (fallback pdfplumber).
-       Markdown preserva o layout multi-coluna do Itaú, que pdfplumber embaralha.
-    2) LLM extrai TODAS as seções (compras, internacionais, produtos/serviços,
-       outros) e ignora "Compras parceladas - próximas faturas" + encargos
-       agregados. Detecta parcelas pelo padrão "NN/MM" na descrição.
-    3) Marca cada item como duplicata se já existir uma despesa equivalente
-       cadastrada para o cartão. O frontend deve mostrar "já registrado" e
-       desmarcar a checkbox por padrão.
-
-    O frontend envia a lista curada para /expenses/bulk para confirmar.
-    """
     if not file.filename:
         raise HTTPException(400, "No filename provided")
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are supported")
-    card = await db.get(CreditCard, card_id)
-    if not card:
-        raise HTTPException(404, "Card not found")
+    card = await _get_owned_card(card_id, current_user.id, db)
 
-    # Save file to a temp upload dir
     upload_dir = Path("uploads")
     upload_dir.mkdir(exist_ok=True)
     file_path = upload_dir / f"cc_{card_id}_{file.filename}"
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Extract: prefer Docling markdown (multi-column safe); fallback to pdfplumber.
-    # Em máquinas sem GPU, Docling roda VLM em CPU e demora minutos por página —
-    # nesse caso pulamos direto para pdfplumber. Timeout protege contra qualquer
-    # cenário em que o converter trave (download de modelo, etc.).
     pdf_text = ""
     if docling_service.is_available():
         try:
             pdf_text = await asyncio.wait_for(
                 docling_service.pdf_to_markdown_async(file_path), timeout=90
             )
-            logger.info(
-                "Fatura %s convertida via Granite-Docling (%d chars)",
-                file.filename, len(pdf_text),
-            )
+            logger.info("Fatura %s convertida via Granite-Docling (%d chars)", file.filename, len(pdf_text))
         except asyncio.TimeoutError:
             logger.warning("Granite-Docling excedeu 90s; usando fallback pdfplumber")
         except Exception as exc:
@@ -750,16 +756,18 @@ async def import_pdf_parse(
     if not pdf_text or not pdf_text.strip():
         raise HTTPException(400, "Could not extract text from PDF")
 
-    # Categorize via LLM
-    cats_q = await db.execute(select(Category).where(Category.type == "expense"))
+    cats_q = await db.execute(
+        select(Category).where(
+            Category.user_id == current_user.id,
+            Category.type == "expense",
+        )
+    )
     categories = cats_q.scalars().all()
     cat_payload = [{"id": c.id, "name": c.name} for c in categories]
     cat_by_name = {c.name.lower(): c.id for c in categories}
 
     parsed = await llm_service.extract_and_categorize_pdf(pdf_text, cat_payload)
 
-    # Pre-carrega despesas existentes do cartão (para detecção de duplicatas).
-    # Carregamos as parcelas para conseguirmos checar o bill_period de cada.
     existing_q = await db.execute(
         select(CreditCardExpense)
         .options(selectinload(CreditCardExpense.installments))
@@ -767,7 +775,6 @@ async def import_pdf_parse(
     )
     existing_expenses = list(existing_q.scalars().all())
 
-    # Index por descrição normalizada para lookup rápido
     by_norm_desc: dict[str, list[CreditCardExpense]] = {}
     for exp in existing_expenses:
         by_norm_desc.setdefault(_normalize_desc(exp.description), []).append(exp)
@@ -791,7 +798,6 @@ async def import_pdf_parse(
         cleaned = (p.get("cleaned_description") or original_desc).strip()
         cleaned = _strip_installment_marker(cleaned)
 
-        # Parcela: confia no LLM, mas valida com regex contra a descrição original
         try:
             inst_n = max(1, int(p.get("installment_number") or 1))
             inst_count = max(1, int(p.get("installment_count") or 1))
@@ -809,15 +815,12 @@ async def import_pdf_parse(
         cat_name = p.get("category") or ""
         suggested_id = cat_by_name.get(cat_name.lower())
 
-        # Detecção de duplicata
         is_duplicate = False
         duplicate_reason: str | None = None
         existing_id: int | None = None
         norm_key = _normalize_desc(cleaned)
 
         if inst_count > 1 and inst_n > 1:
-            # Continuação de parcela: deve já existir um expense com mesma descrição
-            # base e mesmo installment_count para esse cartão.
             for exp in by_norm_desc.get(norm_key, []):
                 if exp.installment_count == inst_count:
                     is_duplicate = True
@@ -826,12 +829,9 @@ async def import_pdf_parse(
                     break
 
         if not is_duplicate:
-            # Compara mesma data + valor (com tolerância) para detectar
-            # tanto compras avulsas quanto a primeira parcela já importada antes.
             for exp in by_norm_desc.get(norm_key, []):
                 same_date = exp.purchase_date == purchase_date
                 if inst_count > 1:
-                    # Total esperado = parcela * count
                     expected_total = round(amount * inst_count, 2)
                     same_amount = abs(float(exp.amount) - expected_total) < 0.02
                 else:
@@ -860,14 +860,21 @@ async def import_pdf_parse(
 
 
 @router.get("/subscriptions", response_model=list[CreditCardExpenseOut])
-async def list_subscriptions(db: AsyncSession = Depends(get_db)):
+async def list_subscriptions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(
         select(CreditCardExpense)
         .options(
             selectinload(CreditCardExpense.category),
             selectinload(CreditCardExpense.installments),
         )
-        .where(CreditCardExpense.is_subscription.is_(True))
+        .join(CreditCard, CreditCard.id == CreditCardExpense.credit_card_id)
+        .where(
+            CreditCard.user_id == current_user.id,
+            CreditCardExpense.is_subscription.is_(True),
+        )
         .order_by(CreditCardExpense.description)
     )
     return result.scalars().all()

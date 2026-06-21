@@ -48,13 +48,10 @@ def normalize_description(text: str) -> str:
 
 async def learn_from_confirmed(
     db: AsyncSession,
+    user_id: int,
     rows: Sequence[tuple[str, str, int]],
 ) -> int:
-    """Upsert rules for each (description, type, category_id) tuple.
-
-    Returns the number of rules touched. Rows with empty pattern or no
-    category_id are ignored.
-    """
+    """Upsert rules for each (description, type, category_id) tuple."""
     seen: dict[tuple[str, str, int], int] = {}
     for description, ttype, category_id in rows:
         if category_id is None:
@@ -71,6 +68,7 @@ async def learn_from_confirmed(
     now = datetime.utcnow()
     payload = [
         {
+            "user_id": user_id,
             "pattern": pattern,
             "type": ttype,
             "category_id": category_id,
@@ -82,7 +80,7 @@ async def learn_from_confirmed(
 
     stmt = pg_insert(CategoryRule).values(payload)
     stmt = stmt.on_conflict_do_update(
-        constraint="uq_category_rule_pattern_type",
+        constraint="uq_category_rule_user_pattern_type",
         set_={
             "category_id": stmt.excluded.category_id,
             "hit_count": CategoryRule.hit_count + stmt.excluded.hit_count,
@@ -94,18 +92,14 @@ async def learn_from_confirmed(
 
 
 async def lookup_rule(
-    db: AsyncSession, description: str
+    db: AsyncSession, user_id: int, description: str
 ) -> CategoryRule | None:
-    """Find the best rule matching this description, or None.
-
-    Currently exact normalized match. Future enhancement: token overlap.
-    """
     pattern = normalize_description(description)
     if not pattern:
         return None
     result = await db.execute(
         select(CategoryRule)
-        .where(CategoryRule.pattern == pattern)
+        .where(CategoryRule.user_id == user_id, CategoryRule.pattern == pattern)
         .order_by(CategoryRule.hit_count.desc())
         .limit(1)
     )
@@ -113,17 +107,12 @@ async def lookup_rule(
 
 
 async def get_few_shot_examples(
-    db: AsyncSession, limit: int = MAX_FEW_SHOT
+    db: AsyncSession, user_id: int, limit: int = MAX_FEW_SHOT
 ) -> list[dict]:
-    """Return top rules formatted as few-shot examples for the LLM prompt.
-
-    Each example: {"description": <pattern>, "category": <name>, "type": <expense|income>}.
-    Only rules with at least 2 hits qualify, to avoid teaching one-off mistakes.
-    """
     stmt = (
         select(CategoryRule, Category.name)
         .join(Category, Category.id == CategoryRule.category_id)
-        .where(CategoryRule.hit_count >= 2)
+        .where(CategoryRule.user_id == user_id, CategoryRule.hit_count >= 2)
         .order_by(CategoryRule.hit_count.desc(), CategoryRule.last_used_at.desc())
         .limit(limit)
     )

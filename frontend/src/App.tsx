@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState } from 'react'
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from './theme/ThemeContext'
+import { useAuth } from './auth/AuthContext'
+import { ProtectedRoute } from './auth/ProtectedRoute'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage'))
@@ -9,6 +11,8 @@ const ExpensesPage = lazy(() => import('./pages/ExpensesPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const CreditCardsPage = lazy(() => import('./pages/CreditCardsPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
 
 function PageFallback() {
   return (
@@ -29,14 +33,20 @@ const navItems = [
   { to: '/settings', label: 'Configurações', icon: 'settings' },
 ]
 
-export default function App() {
+function AuthenticatedShell() {
   const location = useLocation()
+  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const { theme, toggle: toggleTheme } = useTheme()
+  const { user, logout } = useAuth()
+
+  function handleLogout() {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="flex min-h-screen bg-bg text-on-surface">
-      {/* Sidebar */}
       {sidebarOpen && (
         <aside className="fixed left-0 top-0 h-screen w-64 border-r border-outline-variant bg-surface flex flex-col py-6 z-50">
           <div className="px-6 mb-10 flex items-center justify-between">
@@ -74,7 +84,13 @@ export default function App() {
               )
             })}
           </nav>
-          <div className="px-6 pt-4 border-t border-outline-variant">
+          <div className="px-6 pt-4 border-t border-outline-variant space-y-2">
+            {user && (
+              <div className="text-xs text-on-surface-variant truncate" title={user.email}>
+                <div className="font-medium text-on-surface truncate">{user.name}</div>
+                <div className="truncate">{user.email}</div>
+              </div>
+            )}
             <button
               onClick={toggleTheme}
               className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
@@ -86,11 +102,19 @@ export default function App() {
               </span>
               <span>{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</span>
             </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-on-surface-variant hover:text-red-400 hover:bg-surface-container-high transition-colors text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              title="Sair"
+              aria-label="Sair da conta"
+            >
+              <span className="material-symbols-outlined text-base" aria-hidden="true">logout</span>
+              <span>Sair</span>
+            </button>
           </div>
         </aside>
       )}
 
-      {/* Main */}
       <div
         className={`flex-1 flex flex-col min-h-screen min-w-0 transition-[margin] duration-200 ${sidebarOpen ? 'ml-64' : 'ml-0'}`}
         style={sidebarOpen ? { width: 'calc(100% - 16rem)' } : undefined}
@@ -120,5 +144,24 @@ export default function App() {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <AuthenticatedShell />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </Suspense>
   )
 }

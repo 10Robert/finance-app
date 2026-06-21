@@ -1,4 +1,4 @@
-import axios from 'axios'
+import { api } from './auth'
 import type {
   Category,
   TransactionList,
@@ -31,8 +31,6 @@ import type {
   InstallmentPurchaseCreate,
   ExpensesChartData,
 } from '../types'
-
-const api = axios.create({ baseURL: '/api' })
 
 // Categories
 export const getCategories = () =>
