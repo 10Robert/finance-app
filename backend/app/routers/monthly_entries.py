@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import MonthlyEntry, SalaryConfig
+from app.dependencies import get_current_user
+from app.models import MonthlyEntry, SalaryConfig, User
 from app.schemas import (
     MonthlyEntryCreate,
     MonthlyEntryUpdate,
@@ -18,21 +19,24 @@ from app.services.salary_sync import compute_monthly_summary, sync_salary_transa
 router = APIRouter()
 
 
-async def _get_salary_config(db: AsyncSession, month: int = None, year: int = None) -> SalaryConfig | None:
+async def _get_salary_config(db: AsyncSession, user_id: int, month: int = None, year: int = None) -> SalaryConfig | None:
     if month and year:
         result = await db.execute(
             select(SalaryConfig)
             .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-            .where(SalaryConfig.reference_month == month, SalaryConfig.reference_year == year)
+            .where(
+                SalaryConfig.user_id == user_id,
+                SalaryConfig.reference_month == month,
+                SalaryConfig.reference_year == year,
+            )
         )
         config = result.scalar_one_or_none()
         if config:
             return config
-    # Fall back to global
     result = await db.execute(
         select(SalaryConfig)
         .options(selectinload(SalaryConfig.discounts), selectinload(SalaryConfig.overtime_entries))
-        .where(SalaryConfig.reference_month.is_(None))
+        .where(SalaryConfig.user_id == user_id, SalaryConfig.reference_month.is_(None))
         .order_by(SalaryConfig.id.desc())
         .limit(1)
     )
@@ -40,7 +44,6 @@ async def _get_salary_config(db: AsyncSession, month: int = None, year: int = No
 
 
 def _validate_payload(data: MonthlyEntryCreate) -> None:
-    """Ensure the right fields are present for the entry type."""
     t = data.entry_type
     if t == "overtime":
         if data.hours is None or data.hours <= 0:
@@ -68,19 +71,29 @@ async def list_entries(
     month: int = Query(..., ge=1, le=12),
     year: int = Query(...),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(MonthlyEntry)
-        .where(MonthlyEntry.reference_month == month, MonthlyEntry.reference_year == year)
+        .where(
+            MonthlyEntry.user_id == current_user.id,
+            MonthlyEntry.reference_month == month,
+            MonthlyEntry.reference_year == year,
+        )
         .order_by(MonthlyEntry.entry_date.desc(), MonthlyEntry.id.desc())
     )
     return result.scalars().all()
 
 
 @router.post("/", response_model=MonthlyEntryOut, status_code=201)
-async def create_entry(data: MonthlyEntryCreate, db: AsyncSession = Depends(get_db)):
+async def create_entry(
+    data: MonthlyEntryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     _validate_payload(data)
     entry = MonthlyEntry(
+        user_id=current_user.id,
         reference_month=data.reference_month,
         reference_year=data.reference_year,
         entry_type=data.entry_type,
@@ -94,32 +107,41 @@ async def create_entry(data: MonthlyEntryCreate, db: AsyncSession = Depends(get_
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
-    await sync_salary_transaction(db, entry.reference_month, entry.reference_year)
+    await sync_salary_transaction(db, current_user.id, entry.reference_month, entry.reference_year)
     return entry
 
 
 @router.put("/{entry_id}", response_model=MonthlyEntryOut)
-async def update_entry(entry_id: int, data: MonthlyEntryUpdate, db: AsyncSession = Depends(get_db)):
+async def update_entry(
+    entry_id: int,
+    data: MonthlyEntryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     entry = await db.get(MonthlyEntry, entry_id)
-    if not entry:
+    if not entry or entry.user_id != current_user.id:
         raise HTTPException(404, "Lançamento não encontrado")
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(entry, key, value)
     await db.commit()
     await db.refresh(entry)
-    await sync_salary_transaction(db, entry.reference_month, entry.reference_year)
+    await sync_salary_transaction(db, current_user.id, entry.reference_month, entry.reference_year)
     return entry
 
 
 @router.delete("/{entry_id}", status_code=204)
-async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_entry(
+    entry_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     entry = await db.get(MonthlyEntry, entry_id)
-    if not entry:
+    if not entry or entry.user_id != current_user.id:
         raise HTTPException(404, "Lançamento não encontrado")
     month, year = entry.reference_month, entry.reference_year
     await db.delete(entry)
     await db.commit()
-    await sync_salary_transaction(db, month, year)
+    await sync_salary_transaction(db, current_user.id, month, year)
 
 
 @router.get("/summary", response_model=MonthlySummaryOut)
@@ -127,13 +149,15 @@ async def month_summary(
     month: int = Query(..., ge=1, le=12),
     year: int = Query(...),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    config = await _get_salary_config(db, month=month, year=year)
+    config = await _get_salary_config(db, current_user.id, month=month, year=year)
     if not config:
         raise HTTPException(404, "Salary config não encontrada. Configure seu salário primeiro.")
 
     result = await db.execute(
         select(MonthlyEntry).where(
+            MonthlyEntry.user_id == current_user.id,
             MonthlyEntry.reference_month == month,
             MonthlyEntry.reference_year == year,
         )

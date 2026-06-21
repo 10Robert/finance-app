@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Transaction
+from app.dependencies import get_current_user
+from app.models import Transaction, User
 from app.schemas import TransactionCreate, TransactionUpdate, TransactionOut, TransactionListOut
 
 router = APIRouter()
@@ -24,9 +25,11 @@ async def list_transactions(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    query = select(Transaction).options(selectinload(Transaction.category))
-    count_query = select(func.count(Transaction.id))
+    base_where = Transaction.user_id == current_user.id
+    query = select(Transaction).options(selectinload(Transaction.category)).where(base_where)
+    count_query = select(func.count(Transaction.id)).where(base_where)
 
     if start_date:
         query = query.where(Transaction.date >= start_date)
@@ -50,8 +53,12 @@ async def list_transactions(
 
 
 @router.post("/", response_model=TransactionOut, status_code=201)
-async def create_transaction(data: TransactionCreate, db: AsyncSession = Depends(get_db)):
-    transaction = Transaction(**data.model_dump())
+async def create_transaction(
+    data: TransactionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    transaction = Transaction(user_id=current_user.id, **data.model_dump())
     db.add(transaction)
     await db.commit()
     await db.refresh(transaction, ["category"])
@@ -59,8 +66,16 @@ async def create_transaction(data: TransactionCreate, db: AsyncSession = Depends
 
 
 @router.get("/{transaction_id}", response_model=TransactionOut)
-async def get_transaction(transaction_id: int, db: AsyncSession = Depends(get_db)):
-    query = select(Transaction).options(selectinload(Transaction.category)).where(Transaction.id == transaction_id)
+async def get_transaction(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = (
+        select(Transaction)
+        .options(selectinload(Transaction.category))
+        .where(Transaction.id == transaction_id, Transaction.user_id == current_user.id)
+    )
     result = await db.execute(query)
     transaction = result.scalar_one_or_none()
     if not transaction:
@@ -69,28 +84,40 @@ async def get_transaction(transaction_id: int, db: AsyncSession = Depends(get_db
 
 
 @router.put("/{transaction_id}", response_model=TransactionOut)
-async def update_transaction(transaction_id: int, data: TransactionUpdate, db: AsyncSession = Depends(get_db)):
+async def update_transaction(
+    transaction_id: int,
+    data: TransactionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     transaction = await db.get(Transaction, transaction_id)
-    if not transaction:
+    if not transaction or transaction.user_id != current_user.id:
         raise HTTPException(404, "Transaction not found")
     for key, value in data.model_dump(exclude_unset=True).items():
         setattr(transaction, key, value)
     await db.commit()
-    query = select(Transaction).options(selectinload(Transaction.category)).where(Transaction.id == transaction_id)
+    query = (
+        select(Transaction)
+        .options(selectinload(Transaction.category))
+        .where(Transaction.id == transaction_id)
+    )
     result = await db.execute(query)
     return result.scalar_one()
 
 
 @router.delete("/{transaction_id}", status_code=204)
-async def delete_transaction(transaction_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_transaction(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     transaction = await db.get(Transaction, transaction_id)
-    if not transaction:
+    if not transaction or transaction.user_id != current_user.id:
         raise HTTPException(404, "Transaction not found")
     await db.delete(transaction)
     await db.commit()
 
 
-# --- JSON Import ---
 class JsonTransactionItem(BaseModel):
     date: str
     description: str
@@ -105,8 +132,11 @@ class JsonImportPayload(BaseModel):
 
 
 @router.post("/import-json", status_code=201)
-async def import_json(payload: JsonImportPayload, db: AsyncSession = Depends(get_db)):
-    """Import transactions from a JSON payload."""
+async def import_json(
+    payload: JsonImportPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     created = 0
     errors: list[str] = []
     for i, item in enumerate(payload.transactions):
@@ -122,6 +152,7 @@ async def import_json(payload: JsonImportPayload, db: AsyncSession = Depends(get
             continue
         tx_type = item.type if item.type in ("expense", "income") else "expense"
         tx = Transaction(
+            user_id=current_user.id,
             date=tx_date,
             description=item.description,
             amount=amount,

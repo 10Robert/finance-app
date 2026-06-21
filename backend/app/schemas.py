@@ -2,7 +2,34 @@ from datetime import date as Date, datetime as DateTime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+# --- Auth ---
+class UserRegister(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    email: EmailStr
+    name: str
+    is_active: bool
+    created_at: DateTime
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
 
 
 # --- Category ---
@@ -627,3 +654,4 @@ class MonthlySummaryOut(BaseModel):
     total_deductions: Decimal
     net_salary: Decimal
     fgts_balance: Decimal
+
